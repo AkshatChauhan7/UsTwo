@@ -7,5 +7,4 @@ const UserSchema = new mongoose.Schema({
   initials: { type: String }
 });
 
-// Check if model already exists to avoid errors
 module.exports = mongoose.models.User || mongoose.model('User', UserSchema);
