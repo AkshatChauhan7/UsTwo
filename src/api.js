@@ -29,6 +29,7 @@ API.interceptors.response.use(
 );
 
 export const apiCall = {
+  // Auth
   signup: (email, password, name) =>
     API.post('/auth/signup', { email, password, name }),
 
@@ -38,7 +39,30 @@ export const apiCall = {
   logout: () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
-  }
+  },
+
+  // Couples
+  generateInvite: (userId) =>
+    API.post('/couples/generate-invite', { userId }),
+
+  acceptInvite: (userId, inviteCode) =>
+    API.post('/couples/accept-invite', { userId, inviteCode }),
+
+  getCoupleInfo: (coupleId) =>
+    API.get(`/couples/info/${coupleId}`),
+
+  getMyCouple: (userId) =>
+    API.get(`/couples/my-couple/${userId}`),
+
+  // Chat
+  getChatHistory: (coupleId, limit = 50, skip = 0) =>
+    API.get(`/chat/history/${coupleId}`, { params: { limit, skip } }),
+
+  sendMessage: (coupleId, senderId, content) =>
+    API.post('/chat/send', { coupleId, senderId, content }),
+
+  markRead: (coupleId) =>
+    API.put(`/chat/mark-read/${coupleId}`)
 };
 
 export default API;
