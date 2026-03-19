@@ -18,7 +18,8 @@ const ChatWindow = ({ coupleId, partnerName }) => {
   useEffect(() => {
     const loadHistory = async () => {
       try {
-        const { messages: chatMessages } = await api.getChatHistory(coupleId, 50, 0);
+        const response = await api.getChatHistory(coupleId, 50, 0);
+        const { messages: chatMessages } = response.data;
         setMessages(chatMessages.reverse());
         setIsLoadingHistory(false);
       } catch (error) {

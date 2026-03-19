@@ -65,4 +65,4 @@ export const apiCall = {
     API.put(`/chat/mark-read/${coupleId}`)
 };
 
-export default API;
+export default apiCall;

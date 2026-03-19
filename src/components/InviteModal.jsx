@@ -16,7 +16,7 @@ const InviteModal = ({ onCoupleConnected }) => {
     const generateInvite = async () => {
       try {
         const response = await api.generateInvite(user?.id);
-        setInviteCode(response.inviteCode);
+        setInviteCode(response.data.inviteCode);
       } catch (err) {
         setError('Failed to generate invite code');
       }
@@ -49,7 +49,7 @@ const InviteModal = ({ onCoupleConnected }) => {
       const response = await api.acceptInvite(user?.id, inputCode);
       setSuccess('Successfully connected with your partner! 💕');
       setTimeout(() => {
-        onCoupleConnected(response.coupleId);
+        onCoupleConnected(response.data.coupleId);
       }, 1500);
     } catch (err) {
       setError(err.response?.data?.msg || 'Invalid invite code');

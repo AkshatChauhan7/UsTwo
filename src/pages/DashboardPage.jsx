@@ -15,7 +15,7 @@ const DashboardPage = () => {
     const fetchCoupleData = async () => {
       try {
         const response = await api.getMyCouple(user?.id);
-        setCoupleData(response);
+        setCoupleData(response.data);
       } catch (error) {
         console.log('No couple found yet');
       } finally {
@@ -35,7 +35,7 @@ const DashboardPage = () => {
 
   const handleCoupleConnected = (coupleId) => {
     // Fetch the newly connected couple data
-    api.getCoupleInfo(coupleId).then(setCoupleData);
+    api.getCoupleInfo(coupleId).then(res => setCoupleData(res.data));
   };
 
   // If no couple is connected yet, show the invite modal
