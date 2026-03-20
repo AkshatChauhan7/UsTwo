@@ -12,13 +12,29 @@ const InviteModal = ({ onCoupleConnected }) => {
   const [success, setSuccess] = useState('');
   const [copied, setCopied] = useState(false);
 
+  // Debug: Log user on mount
+  useEffect(() => {
+    console.log('📋 InviteModal mounted with user:', user);
+  }, [user]);
+
   useEffect(() => {
     const generateInvite = async () => {
       try {
-        const response = await api.generateInvite(user?.id);
+        if (!user?.id) {
+          console.error('❌ User ID missing:', user);
+          setError('User not properly loaded. Try refreshing the page.');
+          return;
+        }
+        console.log('📤 Generating invite for user:', user.id);
+        const response = await api.generateInvite(user.id);
+        console.log('✅ Invite generated:', response.data);
         setInviteCode(response.data.inviteCode);
+        setError(''); // Clear any previous errors
       } catch (err) {
-        setError('Failed to generate invite code');
+        const errorMsg = err.response?.data?.msg || err.message || 'Failed to generate invite code';
+        console.error('❌ Generate invite error:', errorMsg, err);
+        setError(errorMsg);
+        setInviteCode('ERROR');
       }
     };
 

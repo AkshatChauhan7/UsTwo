@@ -15,7 +15,7 @@ const DashboardPage = () => {
     const fetchCoupleData = async () => {
       try {
         const response = await api.getMyCouple(user?.id);
-        setCoupleData(response.data);
+        setCoupleData(response.data.couple);
       } catch (error) {
         console.log('No couple found yet');
       } finally {
@@ -35,7 +35,7 @@ const DashboardPage = () => {
 
   const handleCoupleConnected = (coupleId) => {
     // Fetch the newly connected couple data
-    api.getCoupleInfo(coupleId).then(res => setCoupleData(res.data));
+    api.getCoupleInfo(coupleId).then(res => setCoupleData(res.data.couple));
   };
 
   // If no couple is connected yet, show the invite modal
@@ -54,10 +54,15 @@ const DashboardPage = () => {
     return <InviteModal onCoupleConnected={handleCoupleConnected} />;
   }
 
+  // Safety check - ensure both users are populated
+  if (!coupleData.user1 || !coupleData.user2) {
+    return <InviteModal onCoupleConnected={handleCoupleConnected} />;
+  }
+
   // Get partner name and info
-  const partnerId = coupleData.user1Id._id === user?.id ? coupleData.user2Id._id : coupleData.user1Id._id;
+  const partnerId = coupleData.user1._id === user?.id ? coupleData.user2._id : coupleData.user1._id;
   const partnerData =
-    coupleData.user1Id._id === user?.id ? coupleData.user2Id : coupleData.user1Id;
+    coupleData.user1._id === user?.id ? coupleData.user2 : coupleData.user1;
   const partnerName = partnerData?.name || 'Partner';
 
   return (

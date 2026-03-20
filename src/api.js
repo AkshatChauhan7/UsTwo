@@ -28,7 +28,7 @@ API.interceptors.response.use(
   }
 );
 
-export const apiCall = {
+const apiCall = {
   // Auth
   signup: (email, password, name) =>
     API.post('/auth/signup', { email, password, name }),
@@ -65,4 +65,5 @@ export const apiCall = {
     API.put(`/chat/mark-read/${coupleId}`)
 };
 
+export { apiCall };
 export default apiCall;
