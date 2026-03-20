@@ -2,10 +2,19 @@ const express = require('express');
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 const path = require('path');
+const http = require('http');
+const { Server } = require('socket.io');
 
 dotenv.config({ path: path.join(__dirname, '../.env') });
 
 const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: '*',
+    methods: ['GET', 'POST']
+  }
+});
 
 // Middleware
 app.use(express.json());
@@ -62,9 +71,21 @@ async function setupRoutes() {
     
     // Load auth routes AFTER Mongoose connects
     const authRoutes = require('./routes/auth');
+    const couplesRoutes = require('./routes/couples');
+    const chatRoutes = require('./routes/chat');
+    
     app.use('/api/auth', authRoutes);
+    app.use('/api/couples', couplesRoutes);
+    app.use('/api/chat', chatRoutes);
+    
     console.log('✅ Auth routes registered at /api/auth');
-    console.log('📍 Available endpoints: POST /api/auth/signup, POST /api/auth/login');
+    console.log('✅ Couples routes registered at /api/couples');
+    console.log('✅ Chat routes registered at /api/chat');
+    console.log('📍 Socket.io listening for real-time events');
+
+    // Setup Socket.io handlers
+    const chatSocket = require('./sockets/chatSocket');
+    chatSocket(io);
 
     // Register 404 handler AFTER all routes
     app.use((req, res) => {
@@ -80,7 +101,7 @@ async function setupRoutes() {
 
     // Start Server
     const PORT = process.env.PORT || 5001;
-    const server = app.listen(PORT, () => {
+    server.listen(PORT, () => {
       console.log(`✅ Server running on http://localhost:${PORT}`);
       console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
     });
