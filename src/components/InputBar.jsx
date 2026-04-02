@@ -1,24 +1,56 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 
-export default function InputBar({ input, setInput, onSend }) {
+export default function InputBar({
+  input,
+  setInput,
+  onSend,
+  onSendMessage,
+  onTyping,
+  onStopTyping,
+  placeholder,
+}) {
   const textareaRef = useRef(null);
+  const [localInput, setLocalInput] = useState("");
+
+  const isControlled = typeof input === "string" && typeof setInput === "function";
+  const currentInput = isControlled ? input : localInput;
+  const updateInput = (value) => {
+    if (isControlled) {
+      setInput(value);
+    } else {
+      setLocalInput(value);
+    }
+  };
+
+  const sendHandler = onSend || onSendMessage;
 
   const autoResize = (e) => {
     e.target.style.height = "auto";
     e.target.style.height = e.target.scrollHeight + "px";
-    setInput(e.target.value);
+    const value = e.target.value;
+    updateInput(value);
+
+    if (value.trim()) {
+      onTyping?.();
+    } else {
+      onStopTyping?.();
+    }
   };
 
   const handleKey = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      onSend();
+      handleSend();
       if (textareaRef.current) textareaRef.current.style.height = "auto";
     }
   };
 
   const handleSend = () => {
-    onSend();
+    const message = (currentInput || "").trim();
+    if (!message || !sendHandler) return;
+    sendHandler(message);
+    updateInput("");
+    onStopTyping?.();
     if (textareaRef.current) textareaRef.current.style.height = "auto";
   };
 
@@ -46,10 +78,10 @@ export default function InputBar({ input, setInput, onSend }) {
         <textarea
           ref={textareaRef}
           rows={1}
-          value={input}
+          value={currentInput}
           onChange={autoResize}
           onKeyDown={handleKey}
-          placeholder="Write something sweet…"
+          placeholder={placeholder || "Write something sweet…"}
           className="flex-1 bg-transparent text-sm text-stone-700 placeholder-stone-400 outline-none resize-none max-h-28 leading-relaxed"
           style={{ scrollbarWidth: "none" }}
         />
@@ -58,7 +90,7 @@ export default function InputBar({ input, setInput, onSend }) {
       {/* Send */}
       <button
         onClick={handleSend}
-        disabled={!input.trim()}
+        disabled={!(currentInput || "").trim()}
         className="w-10 h-10 rounded-full bg-rose-500 flex items-center justify-center hover:bg-rose-600 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0 shadow-sm"
       >
         <svg className="w-4 h-4 stroke-white fill-none stroke-2 translate-x-0.5" viewBox="0 0 24 24">

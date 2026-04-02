@@ -26,7 +26,7 @@ const InviteModal = ({ onCoupleConnected }) => {
           return;
         }
         console.log('📤 Generating invite for user:', user.id);
-        const response = await api.generateInvite(user.id);
+        const response = await api.generateInvite();
         console.log('✅ Invite generated:', response.data);
         setInviteCode(response.data.inviteCode);
         setError(''); // Clear any previous errors
@@ -34,7 +34,7 @@ const InviteModal = ({ onCoupleConnected }) => {
         const errorMsg = err.response?.data?.msg || err.message || 'Failed to generate invite code';
         console.error('❌ Generate invite error:', errorMsg, err);
         setError(errorMsg);
-        setInviteCode('ERROR');
+        setInviteCode('');
       }
     };
 
@@ -62,7 +62,7 @@ const InviteModal = ({ onCoupleConnected }) => {
     setLoading(true);
     setError('');
     try {
-      const response = await api.acceptInvite(user?.id, inputCode);
+      const response = await api.acceptInvite(inputCode);
       setSuccess('Successfully connected with your partner! 💕');
       setTimeout(() => {
         onCoupleConnected(response.data.coupleId);
