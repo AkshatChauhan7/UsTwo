@@ -7,6 +7,17 @@ module.exports = (io) => {
     const userId = socket.userId;
     console.log('🔌 User connected:', socket.id, 'User ID:', userId);
 
+    const updateCouplePresence = async (coupleId) => {
+      const roomName = `couple-${coupleId}`;
+      const room = io.sockets.adapter.rooms.get(roomName);
+      const activeUsersCount = room ? room.size : 0;
+
+      await Couple.findByIdAndUpdate(coupleId, {
+        isActive: activeUsersCount >= 2,
+        lastActivityAt: new Date()
+      });
+    };
+
     // Join couple room
     socket.on('join-room', async (data) => {
       try {
@@ -32,6 +43,8 @@ module.exports = (io) => {
         socket.join(`couple-${coupleId}`);
         console.log(`✅ User ${userId} joined room: couple-${coupleId}`);
 
+        await updateCouplePresence(coupleId);
+
         // Notify partner that user is online
         socket.to(`couple-${coupleId}`).emit('partner-online', {
           userId,
@@ -46,14 +59,15 @@ module.exports = (io) => {
     // Send message
     socket.on('send-message', async (data) => {
       try {
-        const { coupleId, content, senderName } = data;
+        const { coupleId, content, senderName, clientTempId } = data;
         const senderId = userId; // Get from authenticated socket
 
         // Create message in DB
         const message = new Message({
           coupleId,
           senderId,
-          content
+          content,
+          readBy: [senderId]
         });
 
         await message.save();
@@ -65,7 +79,12 @@ module.exports = (io) => {
           senderId,
           senderName,
           content,
-          timestamp: message.timestamp
+          timestamp: message.timestamp,
+          read: message.read,
+          reactions: message.reactions,
+          edited: message.edited,
+          deleted: message.deleted,
+          clientTempId
         });
 
         console.log(`💬 Message sent in couple-${coupleId} by ${userId}`);
@@ -92,16 +111,140 @@ module.exports = (io) => {
       });
     });
 
+    // Read receipts
+    socket.on('mark-read', async (data) => {
+      try {
+        const { coupleId } = data;
+        await Message.updateMany(
+          { coupleId, senderId: { $ne: userId }, read: false },
+          {
+            $set: { read: true, readAt: new Date() },
+            $addToSet: { readBy: userId }
+          }
+        );
+
+        io.to(`couple-${coupleId}`).emit('messages-read', {
+          coupleId,
+          readerId: userId,
+          readAt: new Date()
+        });
+      } catch (error) {
+        console.error('🔥 Mark read socket error:', error);
+      }
+    });
+
+    socket.on('react-message', async (data) => {
+      try {
+        const { coupleId, messageId, emoji } = data;
+        if (!emoji) return;
+
+        const message = await Message.findById(messageId);
+        if (!message) return;
+
+        const existingReactionIndex = message.reactions.findIndex(
+          (reaction) => reaction.userId.toString() === userId
+        );
+
+        if (existingReactionIndex !== -1) {
+          if (message.reactions[existingReactionIndex].emoji === emoji) {
+            message.reactions.splice(existingReactionIndex, 1);
+          } else {
+            message.reactions[existingReactionIndex].emoji = emoji;
+          }
+        } else {
+          message.reactions.push({ userId, emoji });
+        }
+
+        await message.save();
+
+        io.to(`couple-${coupleId}`).emit('message-reacted', {
+          messageId,
+          reactions: message.reactions
+        });
+      } catch (error) {
+        console.error('🔥 React message socket error:', error);
+      }
+    });
+
+    socket.on('edit-message', async (data) => {
+      try {
+        const { coupleId, messageId, content } = data;
+        if (!content || !content.trim()) return;
+
+        const message = await Message.findById(messageId);
+        if (!message) return;
+        if (message.senderId.toString() !== userId) return;
+        if (message.deleted) return;
+
+        message.content = content.trim();
+        message.edited = true;
+        message.editedAt = new Date();
+        await message.save();
+
+        io.to(`couple-${coupleId}`).emit('message-edited', {
+          messageId,
+          content: message.content,
+          edited: message.edited,
+          editedAt: message.editedAt
+        });
+      } catch (error) {
+        console.error('🔥 Edit message socket error:', error);
+      }
+    });
+
+    socket.on('delete-message', async (data) => {
+      try {
+        const { coupleId, messageId } = data;
+
+        const message = await Message.findById(messageId);
+        if (!message) return;
+        if (message.senderId.toString() !== userId) return;
+
+        message.deleted = true;
+        message.deletedAt = new Date();
+        message.content = 'This message was deleted';
+        await message.save();
+
+        io.to(`couple-${coupleId}`).emit('message-deleted', {
+          messageId,
+          deleted: true,
+          deletedAt: message.deletedAt,
+          content: message.content
+        });
+      } catch (error) {
+        console.error('🔥 Delete message socket error:', error);
+      }
+    });
+
     // Disconnect
-    socket.on('disconnect', () => {
+    socket.on('disconnect', async () => {
       console.log('❌ User disconnected:', socket.id, 'User ID:', userId);
+
+      try {
+        const joinedRooms = Array.from(socket.rooms).filter((room) => room.startsWith('couple-'));
+        for (const room of joinedRooms) {
+          const coupleId = room.replace('couple-', '');
+          await updateCouplePresence(coupleId);
+          socket.to(room).emit('partner-offline', {
+            userId,
+            timestamp: new Date()
+          });
+        }
+      } catch (error) {
+        console.error('🔥 Disconnect presence error:', error);
+      }
     });
 
     // Leave room
-    socket.on('leave-room', (data) => {
+    socket.on('leave-room', async (data) => {
       const { coupleId } = data;
       socket.leave(`couple-${coupleId}`);
       console.log(`❌ User ${userId} left room: couple-${coupleId}`);
+      await updateCouplePresence(coupleId);
+      socket.to(`couple-${coupleId}`).emit('partner-offline', {
+        userId,
+        timestamp: new Date()
+      });
     });
 
     // Canvas - Draw stroke

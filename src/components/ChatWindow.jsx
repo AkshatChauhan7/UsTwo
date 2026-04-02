@@ -11,6 +11,7 @@ const ChatWindow = ({ coupleId, partnerName }) => {
   const socket = useSocket();
   const [messages, setMessages] = useState([]);
   const [isTyping, setIsTyping] = useState(false);
+  const [isPartnerOnline, setIsPartnerOnline] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const messagesEndRef = useRef(null);
 
@@ -20,7 +21,7 @@ const ChatWindow = ({ coupleId, partnerName }) => {
       try {
         const response = await api.getChatHistory(coupleId, 50, 0);
         const { messages: chatMessages } = response.data;
-        setMessages(chatMessages.reverse());
+        setMessages(chatMessages);
         setIsLoadingHistory(false);
       } catch (error) {
         console.error('Failed to load chat history:', error);
@@ -49,9 +50,22 @@ const ChatWindow = ({ coupleId, partnerName }) => {
 
     // Listen for incoming messages
     const handleReceiveMessage = (data) => {
-      setMessages((prev) => [...prev, data]);
+      setMessages((prev) => {
+        if (data.clientTempId) {
+          const tempIndex = prev.findIndex((msg) => msg._id === data.clientTempId);
+          if (tempIndex !== -1) {
+            const copy = [...prev];
+            copy[tempIndex] = { ...data };
+            return copy;
+          }
+        }
+        const alreadyExists = prev.some((msg) => msg._id?.toString() === data._id?.toString());
+        if (alreadyExists) return prev;
+        return [...prev, data];
+      });
       // Mark message as read
       api.markRead(coupleId).catch(console.error);
+      socket.emit('mark-read', { coupleId });
     };
 
     // Listen for partner typing
@@ -64,14 +78,78 @@ const ChatWindow = ({ coupleId, partnerName }) => {
       setIsTyping(false);
     };
 
+    const handlePartnerOnline = () => {
+      setIsPartnerOnline(true);
+    };
+
+    const handlePartnerOffline = () => {
+      setIsPartnerOnline(false);
+      setIsTyping(false);
+    };
+
+    const handleMessagesRead = ({ readerId }) => {
+      if (readerId === user?.id) return;
+      setMessages((prev) =>
+        prev.map((msg) => {
+          const sender = msg.senderId?._id || msg.senderId;
+          if (sender === user?.id) {
+            return { ...msg, read: true, readAt: new Date().toISOString() };
+          }
+          return msg;
+        })
+      );
+    };
+
+    const handleMessageReacted = ({ messageId, reactions }) => {
+      setMessages((prev) =>
+        prev.map((msg) => (msg._id?.toString() === messageId?.toString() ? { ...msg, reactions } : msg))
+      );
+    };
+
+    const handleMessageEdited = ({ messageId, content, edited, editedAt }) => {
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg._id?.toString() === messageId?.toString()
+            ? { ...msg, content, edited, editedAt }
+            : msg
+        )
+      );
+    };
+
+    const handleMessageDeleted = ({ messageId, deleted, deletedAt, content }) => {
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg._id?.toString() === messageId?.toString()
+            ? { ...msg, deleted, deletedAt, content }
+            : msg
+        )
+      );
+    };
+
     socket.on('receive-message', handleReceiveMessage);
     socket.on('partner-typing', handlePartnerTyping);
     socket.on('partner-stop-typing', handlePartnerStopTyping);
+    socket.on('partner-online', handlePartnerOnline);
+    socket.on('partner-offline', handlePartnerOffline);
+    socket.on('messages-read', handleMessagesRead);
+    socket.on('message-reacted', handleMessageReacted);
+    socket.on('message-edited', handleMessageEdited);
+    socket.on('message-deleted', handleMessageDeleted);
+
+    // mark current history as read when room opens
+    api.markRead(coupleId).catch(console.error);
+    socket.emit('mark-read', { coupleId });
 
     return () => {
       socket.off('receive-message', handleReceiveMessage);
       socket.off('partner-typing', handlePartnerTyping);
       socket.off('partner-stop-typing', handlePartnerStopTyping);
+      socket.off('partner-online', handlePartnerOnline);
+      socket.off('partner-offline', handlePartnerOffline);
+      socket.off('messages-read', handleMessagesRead);
+      socket.off('message-reacted', handleMessageReacted);
+      socket.off('message-edited', handleMessageEdited);
+      socket.off('message-deleted', handleMessageDeleted);
       socket.emit('leave-room', { coupleId });
     };
   }, [socket, coupleId, user?.id]);
@@ -81,27 +159,36 @@ const ChatWindow = ({ coupleId, partnerName }) => {
 
     // Optimistically add message to UI
     const optimisticMessage = {
-      _id: Date.now(),
+      _id: `temp-${Date.now()}`,
       content,
       senderId: { _id: user?.id, name: user?.name, initials: user?.initials },
       timestamp: new Date().toISOString(),
       read: true,
+      reactions: [],
+      edited: false,
+      deleted: false
     };
 
     setMessages((prev) => [...prev, optimisticMessage]);
 
     // Send via Socket.io
-    if (socket) {
+    if (socket?.connected) {
       socket.emit('send-message', {
         coupleId,
-        senderId: user?.id,
         senderName: user?.name,
         content,
+        clientTempId: optimisticMessage._id
       });
+    } else {
+      api.sendMessage(coupleId, content)
+        .then((res) => {
+          const saved = res.data.message;
+          setMessages((prev) =>
+            prev.map((msg) => (msg._id === optimisticMessage._id ? saved : msg))
+          );
+        })
+        .catch(console.error);
     }
-
-    // Also save to DB as backup
-    api.sendMessage(coupleId, content).catch(console.error);
   };
 
   const handleTyping = () => {
@@ -113,6 +200,62 @@ const ChatWindow = ({ coupleId, partnerName }) => {
   const handleStopTyping = () => {
     if (socket) {
       socket.emit('user-stop-typing', { coupleId, userId: user?.id });
+    }
+  };
+
+  const handleReactMessage = (messageId, emoji) => {
+    if (socket?.connected) {
+      socket.emit('react-message', { coupleId, messageId, emoji });
+    } else {
+      api.reactToMessage(messageId, emoji)
+        .then((res) => {
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg._id?.toString() === messageId?.toString()
+                ? { ...msg, reactions: res.data.reactions }
+                : msg
+            )
+          );
+        })
+        .catch(console.error);
+    }
+  };
+
+  const handleEditMessage = (messageId, content) => {
+    if (socket?.connected) {
+      socket.emit('edit-message', { coupleId, messageId, content });
+    } else {
+      api.editMessage(messageId, content)
+        .then((res) => {
+          const { message } = res.data;
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg._id?.toString() === messageId?.toString()
+                ? { ...msg, ...message }
+                : msg
+            )
+          );
+        })
+        .catch(console.error);
+    }
+  };
+
+  const handleDeleteMessage = (messageId) => {
+    if (socket?.connected) {
+      socket.emit('delete-message', { coupleId, messageId });
+    } else {
+      api.deleteMessage(messageId)
+        .then((res) => {
+          const { message } = res.data;
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg._id?.toString() === messageId?.toString()
+                ? { ...msg, ...message }
+                : msg
+            )
+          );
+        })
+        .catch(console.error);
     }
   };
 
@@ -133,6 +276,9 @@ const ChatWindow = ({ coupleId, partnerName }) => {
       <div className="px-6 py-4 border-b border-pink-200 bg-white shadow-sm">
         <h2 className="text-xl font-semibold text-gray-800">{partnerName}</h2>
         <p className="text-sm text-gray-500">💕 Your special connection</p>
+        <p className={`text-xs mt-1 ${isPartnerOnline ? 'text-green-600' : 'text-gray-400'}`}>
+          {isPartnerOnline ? '● Partner online' : '○ Partner offline'}
+        </p>
       </div>
 
       {/* Messages Area */}
@@ -148,7 +294,12 @@ const ChatWindow = ({ coupleId, partnerName }) => {
               <MessageBubble
                 key={message._id}
                 message={message}
-                isOwn={message.senderId?._id === user?.id}
+                isOwn={(message.senderId?._id || message.senderId) === user?.id}
+                onReact={handleReactMessage}
+                onEdit={handleEditMessage}
+                onDelete={handleDeleteMessage}
+                canEdit={(message.senderId?._id || message.senderId) === user?.id}
+                showRead={(message.senderId?._id || message.senderId) === user?.id}
               />
             ))}
             {isTyping && (
