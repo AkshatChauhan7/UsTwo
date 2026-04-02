@@ -12,6 +12,7 @@ const DashboardPage = () => {
   const [coupleData, setCoupleData] = useState(null);
   const [isLoadingCouple, setIsLoadingCouple] = useState(true);
   const [activeTab, setActiveTab] = useState('chat');
+  const [mood, setMood] = useState('cozy');
 
   useEffect(() => {
     if (!user?.id) return;
@@ -83,69 +84,98 @@ const DashboardPage = () => {
   const partnerData =
     coupleData.user1._id === user?.id ? coupleData.user2 : coupleData.user1;
   const partnerName = partnerData?.name || 'Partner';
+  const partnerInitials = partnerData?.initials || partnerName.slice(0, 2).toUpperCase();
+  const moodLabelMap = {
+    cozy: 'Cozy Evening',
+    night: 'Late Night',
+    playful: 'Playful Vibe',
+    deep: 'Deep Talk'
+  };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-rose-50 via-pink-50 to-purple-50 flex flex-col">
-      {/* Navigation */}
-      <nav className="bg-white/80 backdrop-blur-xl border-b border-white/40 shadow-lg sticky top-0 z-20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <span className="text-3xl animate-bounce">💕</span>
-            <div>
-              <h1 className="text-2xl font-black bg-gradient-to-r from-rose-600 via-pink-600 to-rose-600 bg-clip-text text-transparent">
-                UsTwo
-              </h1>
-              <p className="text-xs text-gray-500">With {partnerName}</p>
+    <div
+      className={`h-dvh min-h-dvh overflow-hidden flex flex-col ustwo-ambient ${mood === 'night' ? 'ustwo-night' : 'bg-gradient-to-br from-rose-50 via-pink-50 to-purple-50'}`}
+    >
+      {/* Compact top bar */}
+      <nav className="z-30 px-3 sm:px-4 pt-2 sm:pt-3">
+        <div className="max-w-7xl mx-auto ustwo-glass rounded-xl px-3 sm:px-4 py-2.5 relative z-10">
+          <div className="flex items-center justify-between gap-2 sm:gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+            <div className="relative">
+              <div className="w-10 h-10 rounded-full ustwo-brand-gradient text-white flex items-center justify-center font-bold animate-heartbeat text-sm">
+                {user?.initials || 'U'}
+              </div>
+              <div className="w-8 h-8 rounded-full bg-white text-gray-700 border-2 border-white absolute -bottom-1 -right-1.5 flex items-center justify-center text-[10px] font-bold">
+                {partnerInitials}
+              </div>
+            </div>
+            <div className="min-w-0">
+              <h1 className="text-lg sm:text-xl font-black ustwo-text-gradient truncate">UsTwo Room</h1>
+              <p className="text-xs text-gray-500 truncate">{moodLabelMap[mood]} · With {partnerName}</p>
             </div>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="text-right hidden sm:block">
-              <p className="text-sm font-semibold text-gray-800">{user?.name}</p>
-              <p className="text-xs text-gray-500">{user?.email}</p>
-            </div>
+            <div className="flex items-center gap-2">
+            <select
+              value={mood}
+              onChange={(e) => setMood(e.target.value)}
+              className="ustwo-pill bg-white/80 outline-none max-w-[110px]"
+            >
+              <option value="cozy">Cozy</option>
+              <option value="night">Late Night</option>
+              <option value="playful">Playful</option>
+              <option value="deep">Deep Talk</option>
+            </select>
             <button
               onClick={handleLogout}
-              className="bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 text-white px-4 py-2 rounded-lg font-semibold transition transform hover:scale-105 shadow-lg hover:shadow-rose-300"
+              className="ustwo-brand-gradient text-white px-3 py-1.5 rounded-lg text-sm font-semibold transition transform hover:scale-105 ustwo-soft-shadow"
             >
               Logout
+            </button>
+          </div>
+        </div>
+
+          <div className="grid grid-cols-2 gap-1 bg-white/70 rounded-lg p-1 border border-pink-100 mt-2">
+            <button
+              onClick={() => setActiveTab('chat')}
+              className={`px-3 py-2 rounded-md text-sm font-semibold transition ${
+                activeTab === 'chat'
+                  ? 'ustwo-brand-gradient text-white'
+                  : 'text-gray-700 hover:bg-pink-50'
+              }`}
+            >
+              💬 Chat
+            </button>
+            <button
+              onClick={() => setActiveTab('canvas')}
+              className={`px-3 py-2 rounded-md text-sm font-semibold transition ${
+                activeTab === 'canvas'
+                  ? 'ustwo-brand-gradient text-white'
+                  : 'text-gray-700 hover:bg-pink-50'
+              }`}
+            >
+              🎨 Canvas
             </button>
           </div>
         </div>
       </nav>
 
       {/* Main Chat Container */}
-      <div className="flex-1 overflow-hidden">
-        <div className="h-full flex flex-col">
-          <div className="px-4 pt-3">
-            <div className="inline-flex bg-white border border-pink-100 rounded-xl p-1 shadow-sm">
-              <button
-                onClick={() => setActiveTab('chat')}
-                className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${
-                  activeTab === 'chat'
-                    ? 'bg-gradient-to-r from-pink-500 to-purple-500 text-white'
-                    : 'text-gray-600 hover:bg-pink-50'
-                }`}
-              >
-                Chat
-              </button>
-              <button
-                onClick={() => setActiveTab('canvas')}
-                className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${
-                  activeTab === 'canvas'
-                    ? 'bg-gradient-to-r from-pink-500 to-purple-500 text-white'
-                    : 'text-gray-600 hover:bg-pink-50'
-                }`}
-              >
-                Canvas
-              </button>
-            </div>
-          </div>
-
-          <div className="flex-1 overflow-hidden pt-3">
+      <div className="flex-1 min-h-0 overflow-hidden relative z-10 px-3 sm:px-4 pb-3 sm:pb-4 pt-1 sm:pt-2">
+        <div className="h-full min-h-0 flex flex-col max-w-7xl mx-auto w-full">
+          <div className="flex-1 min-h-0 overflow-hidden pt-1">
             {activeTab === 'chat' ? (
-              <ChatWindow coupleId={coupleData._id} partnerName={partnerName} />
+              <ChatWindow
+                coupleId={coupleData._id}
+                partnerName={partnerName}
+                mood={mood}
+                onOpenCanvas={() => setActiveTab('canvas')}
+              />
             ) : (
-              <SharedCanvas coupleId={coupleData._id} />
+              <SharedCanvas
+                coupleId={coupleData._id}
+                mood={mood}
+                onBackToChat={() => setActiveTab('chat')}
+              />
             )}
           </div>
         </div>

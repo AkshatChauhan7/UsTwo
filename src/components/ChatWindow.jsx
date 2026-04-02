@@ -6,7 +6,7 @@ import MessageBubble from './MessageBubble';
 import TypingIndicator from './TypingIndicator';
 import InputBar from './InputBar';
 
-const ChatWindow = ({ coupleId, partnerName }) => {
+const ChatWindow = ({ coupleId, partnerName, mood = 'cozy', onOpenCanvas }) => {
   const { user } = useAuth();
   const socket = useSocket();
   const [messages, setMessages] = useState([]);
@@ -261,7 +261,7 @@ const ChatWindow = ({ coupleId, partnerName }) => {
 
   if (isLoadingHistory) {
     return (
-      <div className="flex items-center justify-center h-full bg-gradient-to-br from-pink-50 to-purple-50">
+      <div className="flex items-center justify-center h-full rounded-2xl ustwo-glass">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-pink-500 mb-4"></div>
           <p className="text-gray-600">Loading messages...</p>
@@ -271,43 +271,70 @@ const ChatWindow = ({ coupleId, partnerName }) => {
   }
 
   return (
-    <div className="flex flex-col h-full bg-gradient-to-br from-pink-50 to-purple-50">
+    <div
+      className={`flex flex-col h-full min-h-0 rounded-2xl border overflow-hidden ustwo-soft-shadow ${
+        mood === 'night'
+          ? 'bg-[#1f172a] border-[#3a2d4c]'
+          : 'bg-gradient-to-br from-rose-50/90 via-pink-50/90 to-purple-50/90 border-pink-100'
+      }`}
+    >
       {/* Chat Header */}
-      <div className="px-6 py-4 border-b border-pink-200 bg-white shadow-sm">
-        <h2 className="text-xl font-semibold text-gray-800">{partnerName}</h2>
-        <p className="text-sm text-gray-500">💕 Your special connection</p>
-        <p className={`text-xs mt-1 ${isPartnerOnline ? 'text-green-600' : 'text-gray-400'}`}>
+      <div className={`px-4 sm:px-5 py-3 sm:py-4 border-b ${mood === 'night' ? 'border-[#3a2d4c] bg-white/5' : 'border-pink-200 bg-white/70'} backdrop-blur-xl`}>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
+          <div className="min-w-0">
+            <h2 className={`text-lg sm:text-xl font-semibold truncate ${mood === 'night' ? 'text-white' : 'text-gray-800'}`}>{partnerName}</h2>
+            <p className={`text-xs ${mood === 'night' ? 'text-gray-300' : 'text-gray-500'}`}>This space belongs only to us</p>
+          </div>
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            <button
+              onClick={onOpenCanvas}
+              className={`text-xs px-2.5 sm:px-3 py-1.5 rounded-full border font-semibold ${
+                mood === 'night'
+                  ? 'border-white/20 text-white bg-white/10 hover:bg-white/20'
+                  : 'border-pink-200 text-pink-700 bg-white/80 hover:bg-pink-50'
+              }`}
+            >
+              Open Canvas
+            </button>
+            <span className={`ustwo-pill ${mood === 'night' ? '!bg-white/15 !text-white !border-white/20' : ''}`}>
+              {mood === 'night' ? 'Late Night' : 'Cozy Mood'}
+            </span>
+          </div>
+        </div>
+        <p className={`text-xs mt-2 ${isPartnerOnline ? 'text-green-500' : mood === 'night' ? 'text-gray-400' : 'text-gray-400'}`}>
           {isPartnerOnline ? '● Partner online' : '○ Partner offline'}
         </p>
       </div>
 
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-4">
+      <div className="flex-1 min-h-0 overflow-y-auto px-3 sm:px-4 md:px-5 py-3 sm:py-4">
         {messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-gray-500">
-            <span className="text-4xl mb-4">💕</span>
+          <div className={`flex flex-col items-center justify-center h-full ${mood === 'night' ? 'text-gray-300' : 'text-gray-500'}`}>
+            <span className="text-4xl mb-4 animate-float-soft">💕</span>
             <p>Start your conversation with {partnerName}!</p>
           </div>
         ) : (
           <>
-            {messages.map((message) => (
-              <MessageBubble
-                key={message._id}
-                message={message}
-                isOwn={(message.senderId?._id || message.senderId) === user?.id}
-                onReact={handleReactMessage}
-                onEdit={handleEditMessage}
-                onDelete={handleDeleteMessage}
-                canEdit={(message.senderId?._id || message.senderId) === user?.id}
-                showRead={(message.senderId?._id || message.senderId) === user?.id}
-              />
-            ))}
-            {isTyping && (
-              <div className="flex justify-start">
-                <TypingIndicator />
-              </div>
-            )}
-            <div ref={messagesEndRef} />
+            <div className="max-w-4xl mx-auto w-full space-y-3">
+              {messages.map((message) => (
+                <MessageBubble
+                  key={message._id}
+                  message={message}
+                  isOwn={(message.senderId?._id || message.senderId) === user?.id}
+                  onReact={handleReactMessage}
+                  onEdit={handleEditMessage}
+                  onDelete={handleDeleteMessage}
+                  canEdit={(message.senderId?._id || message.senderId) === user?.id}
+                  showRead={(message.senderId?._id || message.senderId) === user?.id}
+                />
+              ))}
+              {isTyping && (
+                <div className="flex justify-start">
+                  <TypingIndicator />
+                </div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
           </>
         )}
       </div>

@@ -11,6 +11,7 @@ const MessageBubble = ({
   canEdit = false,
   showRead = false
 }) => {
+  const [burstEmoji, setBurstEmoji] = React.useState(null);
   const time = new Date(message.timestamp).toLocaleTimeString([], {
     hour: '2-digit',
     minute: '2-digit'
@@ -29,13 +30,13 @@ const MessageBubble = ({
   };
 
   return (
-    <div className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}>
-      <div className={`max-w-[75%] ${isOwn ? 'items-end' : 'items-start'} flex flex-col gap-1`}>
+    <div className={`group flex ${isOwn ? 'justify-end' : 'justify-start'}`} style={{ animation: 'fadeIn 220ms ease' }}>
+      <div className={`max-w-[86%] sm:max-w-[76%] lg:max-w-[58%] ${isOwn ? 'items-end' : 'items-start'} flex flex-col gap-1`}>
         <div
           className={`px-4 py-2 rounded-2xl shadow-sm ${
             isOwn
-              ? 'bg-gradient-to-r from-pink-500 to-purple-500 text-white'
-              : 'bg-white text-gray-800 border border-pink-100'
+              ? 'ustwo-brand-gradient text-white rounded-br-md shadow-[0_10px_20px_rgba(171,88,141,0.3)]'
+              : 'bg-white/92 text-gray-800 border border-pink-100 rounded-bl-md backdrop-blur-sm'
           }`}
         >
           <p className={`text-sm ${message.deleted ? 'italic opacity-80' : ''}`}>{message.content}</p>
@@ -55,7 +56,7 @@ const MessageBubble = ({
             {Object.entries(reactionsCount).map(([emoji, count]) => (
               <span
                 key={emoji}
-                className="text-xs bg-white border border-pink-100 rounded-full px-2 py-0.5"
+                className="text-xs bg-white/90 border border-pink-100 rounded-full px-2 py-0.5 shadow-sm"
               >
                 {emoji} {count}
               </span>
@@ -65,12 +66,16 @@ const MessageBubble = ({
 
         {/* Actions */}
         {!message.deleted && (
-          <div className="flex gap-1 flex-wrap">
+          <div className="flex gap-1 flex-wrap opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
             {emojiOptions.map((emoji) => (
               <button
                 key={emoji}
-                onClick={() => onReact?.(message._id, emoji)}
-                className="text-xs bg-white border border-pink-100 rounded-full px-2 py-0.5 hover:bg-pink-50"
+                onClick={() => {
+                  setBurstEmoji(emoji);
+                  window.setTimeout(() => setBurstEmoji(null), 500);
+                  onReact?.(message._id, emoji);
+                }}
+                className="text-xs bg-white/90 border border-pink-100 rounded-full px-2 py-0.5 hover:bg-pink-50 hover:-translate-y-0.5 transition"
               >
                 {emoji}
               </button>
@@ -93,6 +98,10 @@ const MessageBubble = ({
               </>
             )}
           </div>
+        )}
+
+        {burstEmoji && (
+          <span className="text-lg pointer-events-none animate-float-soft">{burstEmoji}</span>
         )}
       </div>
     </div>
