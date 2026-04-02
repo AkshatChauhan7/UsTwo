@@ -75,15 +75,15 @@ const InviteModal = ({ onCoupleConnected }) => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-pink-100 via-purple-100 to-pink-100 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full">
-        <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-pink-600 to-purple-600 text-center mb-2">
+    <div className="min-h-screen ustwo-ambient bg-gradient-to-br from-rose-50 via-pink-100 to-purple-100 flex items-center justify-center p-4">
+      <div className="relative z-10 ustwo-glass rounded-3xl shadow-2xl p-8 max-w-md w-full">
+        <h1 className="text-3xl font-bold ustwo-text-gradient text-center mb-2">
           💕 UsTwo
         </h1>
-        <p className="text-gray-500 text-center mb-8">Connect with your special someone</p>
+        <p className="text-gray-500 text-center mb-8">Create your private room for two</p>
 
         {/* Mode Toggle */}
-        <div className="flex gap-2 mb-8">
+        <div className="flex gap-2 mb-8 bg-white/70 rounded-xl p-1 border border-pink-100">
           <button
             onClick={() => {
               setMode('generate');
@@ -96,7 +96,7 @@ const InviteModal = ({ onCoupleConnected }) => {
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
           >
-            Generate Code
+            Room Key
           </button>
           <button
             onClick={() => {
@@ -110,30 +110,30 @@ const InviteModal = ({ onCoupleConnected }) => {
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
           >
-            Accept Code
+            Enter Room
           </button>
         </div>
 
         {/* Generate Mode */}
         {mode === 'generate' && (
           <div className="space-y-4">
-            <div className="bg-gradient-to-r from-pink-50 to-purple-50 p-6 rounded-xl text-center">
-              <p className="text-sm text-gray-600 mb-3">Your invite code</p>
+            <div className="bg-gradient-to-r from-pink-50/90 to-purple-50/90 p-6 rounded-2xl text-center border border-pink-100">
+              <p className="text-sm text-gray-600 mb-3">Your private room key</p>
               <p className="text-4xl font-bold tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-pink-600 to-purple-600 mb-4">
                 {inviteCode || 'Loading...'}
               </p>
               <button
                 onClick={handleCopyCode}
                 disabled={!inviteCode}
-                className="w-full bg-gradient-to-r from-pink-500 to-purple-500 text-white py-2 px-4 rounded-lg font-semibold hover:shadow-lg transition disabled:opacity-50"
+                className="w-full ustwo-brand-gradient text-white py-2.5 px-4 rounded-xl font-semibold hover:shadow-lg transition disabled:opacity-50"
               >
-                {copied ? '✓ Copied!' : 'Copy Code'}
+                {copied ? '✓ Sealed & Copied' : 'Seal & Share'}
               </button>
             </div>
 
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <p className="text-sm text-blue-800">
-                📱 Share this code with your partner so they can connect with you!
+            <div className="bg-blue-50/80 border border-blue-200 rounded-xl p-4">
+              <p className="text-sm text-blue-800 leading-relaxed">
+                ✨ Share this room key only with your partner. It unlocks your private space together.
               </p>
             </div>
           </div>
@@ -144,14 +144,14 @@ const InviteModal = ({ onCoupleConnected }) => {
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Enter your partner's invite code
+                Enter your partner's room key
               </label>
               <input
                 type="text"
                 value={inputCode}
                 onChange={(e) => setInputCode(e.target.value.toUpperCase())}
                 placeholder="e.g., 60D1D480"
-                className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-pink-500 focus:outline-none font-mono text-center text-lg tracking-wider"
+                className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-pink-500 focus:outline-none font-mono text-center text-lg tracking-wider bg-white/85"
                 maxLength="8"
               />
             </div>
@@ -159,14 +159,14 @@ const InviteModal = ({ onCoupleConnected }) => {
             <button
               onClick={handleAcceptInvite}
               disabled={loading}
-              className="w-full bg-gradient-to-r from-pink-500 to-purple-500 text-white py-3 px-4 rounded-lg font-semibold hover:shadow-lg transition disabled:opacity-50"
+              className="w-full ustwo-brand-gradient text-white py-3 px-4 rounded-xl font-semibold hover:shadow-lg transition disabled:opacity-50"
             >
-              {loading ? 'Connecting...' : 'Connect with Code'}
+              {loading ? 'Unlocking room...' : 'Unlock Our Room'}
             </button>
 
-            <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+            <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
               <p className="text-sm text-purple-800">
-                💌 Ask your partner for their invite code to connect!
+                💌 Ask your partner for their room key to enter your private space.
               </p>
             </div>
           </div>
@@ -188,7 +188,7 @@ const InviteModal = ({ onCoupleConnected }) => {
 
         {/* Footer */}
         <p className="text-xs text-gray-500 text-center mt-8">
-          💑 Making love at a distance easier
+          💑 A room that belongs only to both of you
         </p>
       </div>
     </div>

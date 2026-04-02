@@ -286,6 +286,76 @@ module.exports = (io) => {
       }
     });
 
+    // Canvas - Undo last stroke
+    socket.on('undo-canvas', async (data) => {
+      try {
+        const { coupleId } = data;
+
+        const canvas = await CanvasState.findOne({ coupleId });
+        if (!canvas || canvas.strokes.length === 0) {
+          return;
+        }
+
+        canvas.strokes.pop();
+        canvas.lastModifiedBy = userId;
+        await canvas.save();
+
+        io.to(`couple-${coupleId}`).emit('canvas-undo', {
+          userId,
+          timestamp: new Date()
+        });
+
+        console.log(`↩️ Canvas undo in couple-${coupleId} by ${userId}`);
+      } catch (error) {
+        console.error('🔥 Undo canvas error:', error);
+        socket.emit('error', { msg: 'Error undoing canvas stroke' });
+      }
+    });
+
+    // Canvas - Redo stroke
+    socket.on('redo-canvas', async (data) => {
+      try {
+        const { coupleId, stroke } = data;
+
+        if (!stroke || !Array.isArray(stroke.points) || stroke.points.length === 0) {
+          return;
+        }
+
+        let canvas = await CanvasState.findOne({ coupleId });
+        if (!canvas) {
+          canvas = new CanvasState({ coupleId, strokes: [] });
+        }
+
+        canvas.strokes.push({
+          points: stroke.points,
+          color: stroke.color,
+          size: stroke.size,
+          userId,
+          createdAt: new Date()
+        });
+
+        canvas.lastModifiedBy = userId;
+        await canvas.save();
+
+        io.to(`couple-${coupleId}`).emit('canvas-redo', {
+          stroke: {
+            points: stroke.points,
+            color: stroke.color,
+            size: stroke.size,
+            userId,
+            createdAt: new Date()
+          },
+          userId,
+          timestamp: new Date()
+        });
+
+        console.log(`↪️ Canvas redo in couple-${coupleId} by ${userId}`);
+      } catch (error) {
+        console.error('🔥 Redo canvas error:', error);
+        socket.emit('error', { msg: 'Error redoing canvas stroke' });
+      }
+    });
+
     // Canvas - Clear canvas
     socket.on('clear-canvas', async (data) => {
       try {
