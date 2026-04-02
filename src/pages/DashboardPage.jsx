@@ -12,21 +12,39 @@ const DashboardPage = () => {
   const [isLoadingCouple, setIsLoadingCouple] = useState(true);
 
   useEffect(() => {
+    if (!user?.id) return;
+
+    let isMounted = true;
+
     const fetchCoupleData = async () => {
       try {
-        const response = await api.getMyCouple(user?.id);
-        setCoupleData(response.data.couple);
+        const response = await api.getMyCouple();
+        if (isMounted) {
+          setCoupleData(response.data.couple);
+        }
       } catch (error) {
-        console.log('No couple found yet');
+        // Expected when user is not connected yet
       } finally {
-        setIsLoadingCouple(false);
+        if (isMounted) {
+          setIsLoadingCouple(false);
+        }
       }
     };
 
-    if (user?.id) {
-      fetchCoupleData();
-    }
-  }, [user?.id]);
+    fetchCoupleData();
+
+    // While waiting for partner to accept invite, poll for couple status
+    const intervalId = setInterval(() => {
+      if (!coupleData) {
+        fetchCoupleData();
+      }
+    }, 3000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(intervalId);
+    };
+  }, [user?.id, coupleData]);
 
   const handleLogout = () => {
     logout();

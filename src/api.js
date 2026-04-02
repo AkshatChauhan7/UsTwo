@@ -42,27 +42,33 @@ const apiCall = {
   },
 
   // Couples
-  generateInvite: (userId) =>
-    API.post('/couples/generate-invite', { userId }),
+  generateInvite: () =>
+    API.post('/couples/generate-invite'),
 
-  acceptInvite: (userId, inviteCode) =>
-    API.post('/couples/accept-invite', { userId, inviteCode }),
+  acceptInvite: (inviteCode) =>
+    API.post('/couples/accept-invite', { inviteCode }),
 
   getCoupleInfo: (coupleId) =>
     API.get(`/couples/info/${coupleId}`),
 
-  getMyCouple: (userId) =>
-    API.get(`/couples/my-couple/${userId}`),
+  getMyCouple: () =>
+    API.get('/couples/my-couple'),
+
+  disconnectCouple: () =>
+    API.delete('/couples/disconnect'),
 
   // Chat
   getChatHistory: (coupleId, limit = 50, skip = 0) =>
     API.get(`/chat/history/${coupleId}`, { params: { limit, skip } }),
 
-  sendMessage: (coupleId, senderId, content) =>
-    API.post('/chat/send', { coupleId, senderId, content }),
+  sendMessage: (coupleId, content) =>
+    API.post('/chat/send', { coupleId, content }),
 
   markRead: (coupleId) =>
-    API.put(`/chat/mark-read/${coupleId}`)
+    API.put(`/chat/mark-read/${coupleId}`),
+
+  getUnreadCount: (coupleId) =>
+    API.get(`/chat/unread-count/${coupleId}`)
 };
 
 export { apiCall };

@@ -45,7 +45,6 @@ const ChatWindow = ({ coupleId, partnerName }) => {
     // Join the couple room
     socket.emit('join-room', {
       coupleId,
-      userId: user?.id,
     });
 
     // Listen for incoming messages
@@ -95,18 +94,19 @@ const ChatWindow = ({ coupleId, partnerName }) => {
     if (socket) {
       socket.emit('send-message', {
         coupleId,
-        userId: user?.id,
+        senderId: user?.id,
+        senderName: user?.name,
         content,
       });
     }
 
     // Also save to DB as backup
-    api.sendMessage(coupleId, user?.id, content).catch(console.error);
+    api.sendMessage(coupleId, content).catch(console.error);
   };
 
   const handleTyping = () => {
     if (socket) {
-      socket.emit('user-typing', { coupleId, userId: user?.id });
+      socket.emit('user-typing', { coupleId, userId: user?.id, senderName: user?.name });
     }
   };
 
