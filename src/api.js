@@ -68,7 +68,16 @@ const apiCall = {
     API.put(`/chat/mark-read/${coupleId}`),
 
   getUnreadCount: (coupleId) =>
-    API.get(`/chat/unread-count/${coupleId}`)
+    API.get(`/chat/unread-count/${coupleId}`),
+
+  reactToMessage: (messageId, emoji) =>
+    API.put(`/chat/message/${messageId}/react`, { emoji }),
+
+  editMessage: (messageId, content) =>
+    API.put(`/chat/message/${messageId}`, { content }),
+
+  deleteMessage: (messageId) =>
+    API.delete(`/chat/message/${messageId}`)
 };
 
 export { apiCall };

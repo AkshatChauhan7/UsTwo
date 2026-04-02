@@ -119,7 +119,8 @@ router.post('/send', authMiddleware, async (req, res) => {
     const message = new Message({
       coupleId,
       senderId,
-      content: content.trim()
+      content: content.trim(),
+      readBy: [senderId]
     });
 
     await message.save();
@@ -135,7 +136,11 @@ router.post('/send', authMiddleware, async (req, res) => {
         senderId: message.senderId,
         content: message.content,
         timestamp: message.timestamp,
-        read: message.read
+        read: message.read,
+        readBy: message.readBy,
+        reactions: message.reactions,
+        edited: message.edited,
+        deleted: message.deleted
       }
     });
   } catch (error) {
@@ -179,8 +184,11 @@ router.put('/mark-read/:coupleId', authMiddleware, async (req, res) => {
     }
 
     const result = await Message.updateMany(
-      { coupleId, read: false },
-      { read: true }
+      { coupleId, senderId: { $ne: req.user.id }, read: false },
+      {
+        $set: { read: true, readAt: new Date() },
+        $addToSet: { readBy: req.user.id }
+      }
     );
 
     console.log('✅ Marked', result.modifiedCount, 'messages as read');
@@ -222,6 +230,158 @@ router.get('/unread-count/:coupleId', authMiddleware, async (req, res) => {
     console.error('🔥 Unread count error:', error.message);
     res.status(500).json({
       msg: 'Error fetching unread count',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+/**
+ * PUT /api/chat/message/:messageId/react
+ * Add/update/remove a reaction for authenticated user
+ * Body: { emoji }
+ */
+router.put('/message/:messageId/react', authMiddleware, async (req, res) => {
+  try {
+    const { messageId } = req.params;
+    const { emoji } = req.body;
+
+    if (!emoji) {
+      return res.status(400).json({ msg: 'Emoji is required', code: 'MISSING_EMOJI' });
+    }
+
+    const message = await Message.findById(messageId);
+    if (!message) {
+      return res.status(404).json({ msg: 'Message not found', code: 'MESSAGE_NOT_FOUND' });
+    }
+
+    const couple = await Couple.findById(message.coupleId);
+    if (!couple) {
+      return res.status(404).json({ msg: 'Couple not found', code: 'COUPLE_NOT_FOUND' });
+    }
+
+    const isPartOfCouple =
+      couple.user1Id.toString() === req.user.id ||
+      couple.user2Id.toString() === req.user.id;
+
+    if (!isPartOfCouple) {
+      return res.status(403).json({ msg: 'Unauthorized', code: 'UNAUTHORIZED' });
+    }
+
+    const existingReactionIndex = message.reactions.findIndex(
+      (reaction) => reaction.userId.toString() === req.user.id
+    );
+
+    if (existingReactionIndex !== -1) {
+      if (message.reactions[existingReactionIndex].emoji === emoji) {
+        message.reactions.splice(existingReactionIndex, 1);
+      } else {
+        message.reactions[existingReactionIndex].emoji = emoji;
+      }
+    } else {
+      message.reactions.push({ userId: req.user.id, emoji });
+    }
+
+    await message.save();
+
+    res.json({
+      msg: 'Reaction updated',
+      messageId: message._id,
+      reactions: message.reactions
+    });
+  } catch (error) {
+    console.error('🔥 React message error:', error.message);
+    res.status(500).json({
+      msg: 'Error reacting to message',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+/**
+ * PUT /api/chat/message/:messageId
+ * Edit own message
+ * Body: { content }
+ */
+router.put('/message/:messageId', authMiddleware, async (req, res) => {
+  try {
+    const { messageId } = req.params;
+    const { content } = req.body;
+
+    if (!content || !content.trim()) {
+      return res.status(400).json({ msg: 'Content is required', code: 'MISSING_CONTENT' });
+    }
+
+    const message = await Message.findById(messageId);
+    if (!message) {
+      return res.status(404).json({ msg: 'Message not found', code: 'MESSAGE_NOT_FOUND' });
+    }
+
+    if (message.senderId.toString() !== req.user.id) {
+      return res.status(403).json({ msg: 'You can only edit your own messages', code: 'UNAUTHORIZED' });
+    }
+
+    if (message.deleted) {
+      return res.status(400).json({ msg: 'Deleted message cannot be edited', code: 'MESSAGE_DELETED' });
+    }
+
+    message.content = content.trim();
+    message.edited = true;
+    message.editedAt = new Date();
+    await message.save();
+
+    res.json({
+      msg: 'Message updated',
+      message: {
+        _id: message._id,
+        content: message.content,
+        edited: message.edited,
+        editedAt: message.editedAt
+      }
+    });
+  } catch (error) {
+    console.error('🔥 Edit message error:', error.message);
+    res.status(500).json({
+      msg: 'Error editing message',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+/**
+ * DELETE /api/chat/message/:messageId
+ * Soft delete own message
+ */
+router.delete('/message/:messageId', authMiddleware, async (req, res) => {
+  try {
+    const { messageId } = req.params;
+
+    const message = await Message.findById(messageId);
+    if (!message) {
+      return res.status(404).json({ msg: 'Message not found', code: 'MESSAGE_NOT_FOUND' });
+    }
+
+    if (message.senderId.toString() !== req.user.id) {
+      return res.status(403).json({ msg: 'You can only delete your own messages', code: 'UNAUTHORIZED' });
+    }
+
+    message.deleted = true;
+    message.deletedAt = new Date();
+    message.content = 'This message was deleted';
+    await message.save();
+
+    res.json({
+      msg: 'Message deleted',
+      message: {
+        _id: message._id,
+        deleted: message.deleted,
+        deletedAt: message.deletedAt,
+        content: message.content
+      }
+    });
+  } catch (error) {
+    console.error('🔥 Delete message error:', error.message);
+    res.status(500).json({
+      msg: 'Error deleting message',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }

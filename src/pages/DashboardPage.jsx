@@ -4,12 +4,14 @@ import { useNavigate } from 'react-router-dom';
 import api from '../api';
 import ChatWindow from '../components/ChatWindow';
 import InviteModal from '../components/InviteModal';
+import SharedCanvas from '../components/SharedCanvas';
 
 const DashboardPage = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [coupleData, setCoupleData] = useState(null);
   const [isLoadingCouple, setIsLoadingCouple] = useState(true);
+  const [activeTab, setActiveTab] = useState('chat');
 
   useEffect(() => {
     if (!user?.id) return;
@@ -78,7 +80,6 @@ const DashboardPage = () => {
   }
 
   // Get partner name and info
-  const partnerId = coupleData.user1._id === user?.id ? coupleData.user2._id : coupleData.user1._id;
   const partnerData =
     coupleData.user1._id === user?.id ? coupleData.user2 : coupleData.user1;
   const partnerName = partnerData?.name || 'Partner';
@@ -114,7 +115,40 @@ const DashboardPage = () => {
 
       {/* Main Chat Container */}
       <div className="flex-1 overflow-hidden">
-        <ChatWindow coupleId={coupleData._id} partnerName={partnerName} />
+        <div className="h-full flex flex-col">
+          <div className="px-4 pt-3">
+            <div className="inline-flex bg-white border border-pink-100 rounded-xl p-1 shadow-sm">
+              <button
+                onClick={() => setActiveTab('chat')}
+                className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${
+                  activeTab === 'chat'
+                    ? 'bg-gradient-to-r from-pink-500 to-purple-500 text-white'
+                    : 'text-gray-600 hover:bg-pink-50'
+                }`}
+              >
+                Chat
+              </button>
+              <button
+                onClick={() => setActiveTab('canvas')}
+                className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${
+                  activeTab === 'canvas'
+                    ? 'bg-gradient-to-r from-pink-500 to-purple-500 text-white'
+                    : 'text-gray-600 hover:bg-pink-50'
+                }`}
+              >
+                Canvas
+              </button>
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-hidden pt-3">
+            {activeTab === 'chat' ? (
+              <ChatWindow coupleId={coupleData._id} partnerName={partnerName} />
+            ) : (
+              <SharedCanvas coupleId={coupleData._id} />
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
