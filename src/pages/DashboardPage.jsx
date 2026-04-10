@@ -2,17 +2,23 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
 import api from '../api';
+import { useSocket } from '../hooks/useSocket';
 import ChatWindow from '../components/ChatWindow';
 import InviteModal from '../components/InviteModal';
 import SharedCanvas from '../components/SharedCanvas';
+import MemoryLane from '../components/MemoryLane';
+import DiaryBook from '../components/DiaryBook';
 
 const DashboardPage = () => {
   const { user, logout } = useAuth();
+  const socket = useSocket();
   const navigate = useNavigate();
   const [coupleData, setCoupleData] = useState(null);
   const [isLoadingCouple, setIsLoadingCouple] = useState(true);
   const [activeTab, setActiveTab] = useState('chat');
   const [mood, setMood] = useState('cozy');
+  const [isDiaryOpen, setIsDiaryOpen] = useState(false);
+  const [hasDiaryAlert, setHasDiaryAlert] = useState(false);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -48,6 +54,28 @@ const DashboardPage = () => {
       clearInterval(intervalId);
     };
   }, [user?.id, coupleData]);
+
+  useEffect(() => {
+    if (!socket || !coupleData?._id || !user?.id) return;
+
+    socket.emit('join-room', { coupleId: coupleData._id });
+
+    const mySide = coupleData.user1?._id === user.id ? 'left' : 'right';
+
+    const onDiaryComment = ({ targetPage, authorId }) => {
+      if (authorId?.toString() === user.id?.toString()) return;
+      if (targetPage === mySide && !isDiaryOpen) {
+        setHasDiaryAlert(true);
+      }
+    };
+
+    socket.on('diary-comment-added', onDiaryComment);
+
+    return () => {
+      socket.off('diary-comment-added', onDiaryComment);
+      socket.emit('leave-room', { coupleId: coupleData._id });
+    };
+  }, [socket, coupleData?._id, coupleData?.user1?._id, user?.id, isDiaryOpen]);
 
   const handleLogout = () => {
     logout();
@@ -134,7 +162,7 @@ const DashboardPage = () => {
           </div>
         </div>
 
-          <div className="grid grid-cols-2 gap-1 bg-white/70 rounded-lg p-1 border border-pink-100 mt-2">
+          <div className="grid grid-cols-3 gap-1 bg-white/70 rounded-lg p-1 border border-pink-100 mt-2">
             <button
               onClick={() => setActiveTab('chat')}
               className={`px-3 py-2 rounded-md text-sm font-semibold transition ${
@@ -155,6 +183,16 @@ const DashboardPage = () => {
             >
               🎨 Canvas
             </button>
+            <button
+              onClick={() => setActiveTab('memories')}
+              className={`px-3 py-2 rounded-md text-sm font-semibold transition ${
+                activeTab === 'memories'
+                  ? 'ustwo-brand-gradient text-white'
+                  : 'text-gray-700 hover:bg-pink-50'
+              }`}
+            >
+              📸 Memories
+            </button>
           </div>
         </div>
       </nav>
@@ -170,16 +208,40 @@ const DashboardPage = () => {
                 mood={mood}
                 onOpenCanvas={() => setActiveTab('canvas')}
               />
-            ) : (
+            ) : activeTab === 'canvas' ? (
               <SharedCanvas
                 coupleId={coupleData._id}
                 mood={mood}
                 onBackToChat={() => setActiveTab('chat')}
               />
+            ) : (
+              <MemoryLane
+                coupleId={coupleData._id}
+                mood={mood}
+              />
             )}
           </div>
         </div>
       </div>
+
+      <DiaryBook
+        isOpen={isDiaryOpen}
+        onOpen={() => {
+          setIsDiaryOpen(true);
+          setHasDiaryAlert(false);
+        }}
+        onClose={() => setIsDiaryOpen(false)}
+        coupleId={coupleData._id}
+        coupleData={coupleData}
+        user={user}
+        hasAlert={hasDiaryAlert}
+      />
+
+      {!isDiaryOpen && hasDiaryAlert ? (
+        <div className="fixed bottom-20 right-5 z-40 text-xs ustwo-pill bg-rose-100 text-rose-700 animate-heartbeat">
+          New diary ink note 💜
+        </div>
+      ) : null}
     </div>
   );
 };

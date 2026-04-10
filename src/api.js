@@ -77,7 +77,39 @@ const apiCall = {
     API.put(`/chat/message/${messageId}`, { content }),
 
   deleteMessage: (messageId) =>
-    API.delete(`/chat/message/${messageId}`)
+    API.delete(`/chat/message/${messageId}`),
+
+  // Memories
+  getMemories: (coupleId) =>
+    API.get(`/memories/${coupleId}`),
+
+  createMemory: (payload) =>
+    API.post('/memories', payload),
+
+  uploadMemory: (formData) =>
+    API.post('/memories/upload', formData),
+
+  heartMemory: (memoryId) =>
+    API.put(`/memories/${memoryId}/heart`),
+
+  deleteMemory: (memoryId) =>
+    API.delete(`/memories/${memoryId}`),
+
+  clearMemories: (coupleId) =>
+    API.delete(`/memories/couple/${coupleId}`),
+
+  // Diary
+  getDiaryEntry: (coupleId, date) =>
+    API.get(`/diary/${coupleId}`, { params: { date } }),
+
+  updateDiaryContent: (coupleId, payload) =>
+    API.put(`/diary/${coupleId}`, payload),
+
+  addDiaryComment: (coupleId, payload) =>
+    API.post(`/diary/${coupleId}/comment`, payload),
+
+  moveDiaryComment: (coupleId, commentId, payload) =>
+    API.put(`/diary/${coupleId}/comment/${commentId}/move`, payload)
 };
 
 export { apiCall };

@@ -1,6 +1,16 @@
 const Message = require('../models/Message');
 const Couple = require('../models/Couple');
 const CanvasState = require('../models/CanvasState');
+const DiaryEntry = require('../models/DiaryEntry');
+
+const getDateRange = (dateInput) => {
+  const base = dateInput ? new Date(dateInput) : new Date();
+  const start = new Date(base);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(base);
+  end.setHours(23, 59, 59, 999);
+  return { start, end };
+};
 
 module.exports = (io) => {
   io.on('connection', (socket) => {
@@ -399,6 +409,208 @@ module.exports = (io) => {
       } catch (error) {
         console.error('🔥 Get canvas state error:', error);
         socket.emit('error', { msg: 'Error getting canvas state' });
+      }
+    });
+
+    // Diary - Request one day entry
+    socket.on('request-diary-entry', async (data) => {
+      try {
+        const { coupleId, date } = data;
+        const { start, end } = getDateRange(date);
+
+        const couple = await Couple.findById(coupleId);
+        if (!couple) return;
+
+        const isPartOfCouple =
+          couple.user1Id.toString() === userId ||
+          couple.user2Id.toString() === userId;
+        if (!isPartOfCouple) return;
+
+        const side = couple.user1Id.toString() === userId ? 'left' : 'right';
+
+        const entry = await DiaryEntry.findOne({
+          coupleId,
+          date: { $gte: start, $lte: end }
+        }).lean();
+
+        socket.emit('diary-entry', {
+          coupleId,
+          side,
+          date: start,
+          entry: entry || {
+            coupleId,
+            date: start,
+            leftContent: '',
+            rightContent: '',
+            comments: []
+          }
+        });
+      } catch (error) {
+        console.error('🔥 Request diary entry socket error:', error);
+      }
+    });
+
+    // Diary - Update content in real time
+    socket.on('update-diary-content', async (data) => {
+      try {
+        const { coupleId, date, side, content } = data;
+
+        const couple = await Couple.findById(coupleId);
+        if (!couple) return;
+
+        const isPartOfCouple =
+          couple.user1Id.toString() === userId ||
+          couple.user2Id.toString() === userId;
+        if (!isPartOfCouple) return;
+
+        const allowedSide = couple.user1Id.toString() === userId ? 'left' : 'right';
+        if (side !== allowedSide) return;
+
+        const { start, end } = getDateRange(date);
+
+        const update = allowedSide === 'left'
+          ? { leftContent: String(content || '') }
+          : { rightContent: String(content || '') };
+
+        const entry = await DiaryEntry.findOneAndUpdate(
+          { coupleId, date: { $gte: start, $lte: end } },
+          {
+            $set: {
+              ...update,
+              coupleId,
+              date: start,
+              updatedAt: new Date()
+            },
+            $setOnInsert: {
+              comments: []
+            }
+          },
+          { upsert: true, new: true }
+        ).lean();
+
+        io.to(`couple-${coupleId}`).emit('diary-content-updated', {
+          coupleId,
+          date: start,
+          leftContent: entry.leftContent,
+          rightContent: entry.rightContent,
+          updatedBy: userId,
+          updatedSide: allowedSide
+        });
+      } catch (error) {
+        console.error('🔥 Update diary content socket error:', error);
+      }
+    });
+
+    // Diary - Add comment at page position
+    socket.on('add-diary-comment', async (data) => {
+      try {
+        const { coupleId, date, targetPage, text, x, y, xPos, yPos, zIndex } = data;
+        if (!['left', 'right'].includes(targetPage)) return;
+        if (!text || !String(text).trim()) return;
+
+        const couple = await Couple.findById(coupleId);
+        if (!couple) return;
+
+        const isPartOfCouple =
+          couple.user1Id.toString() === userId ||
+          couple.user2Id.toString() === userId;
+        if (!isPartOfCouple) return;
+
+        const rawX = x ?? xPos;
+        const rawY = y ?? yPos;
+        const normalizedX = Math.max(0, Math.min(100, Number(rawX)));
+        const normalizedY = Math.max(0, Math.min(100, Number(rawY)));
+        const normalizedZ = Number.isFinite(Number(zIndex)) ? Math.max(1, Number(zIndex)) : 1;
+        const { start, end } = getDateRange(date);
+
+        const comment = {
+          authorId: userId,
+          targetPage,
+          text: String(text).trim(),
+          x: normalizedX,
+          y: normalizedY,
+          zIndex: normalizedZ,
+          createdAt: new Date()
+        };
+
+        const entry = await DiaryEntry.findOneAndUpdate(
+          { coupleId, date: { $gte: start, $lte: end } },
+          {
+            $setOnInsert: {
+              coupleId,
+              date: start,
+              leftContent: '',
+              rightContent: ''
+            },
+            $push: { comments: comment },
+            $set: { updatedAt: new Date() }
+          },
+          { upsert: true, new: true }
+        ).lean();
+
+        const savedComment = entry.comments[entry.comments.length - 1];
+
+        io.to(`couple-${coupleId}`).emit('diary-comment-added', {
+          coupleId,
+          date: start,
+          comment: savedComment,
+          targetPage,
+          authorId: userId
+        });
+      } catch (error) {
+        console.error('🔥 Add diary comment socket error:', error);
+      }
+    });
+
+    // Diary - Move comment with live sync
+    socket.on('move-diary-comment', async (data) => {
+      try {
+        const { coupleId, date, commentId, x, y, zIndex } = data;
+        if (!commentId) return;
+
+        const couple = await Couple.findById(coupleId);
+        if (!couple) return;
+
+        const isPartOfCouple =
+          couple.user1Id.toString() === userId ||
+          couple.user2Id.toString() === userId;
+        if (!isPartOfCouple) return;
+
+        const normalizedX = Math.max(0, Math.min(100, Number(x)));
+        const normalizedY = Math.max(0, Math.min(100, Number(y)));
+        const normalizedZ = Number.isFinite(Number(zIndex)) ? Math.max(1, Number(zIndex)) : 1;
+        const { start, end } = getDateRange(date);
+
+        const entry = await DiaryEntry.findOneAndUpdate(
+          {
+            coupleId,
+            date: { $gte: start, $lte: end },
+            'comments._id': commentId
+          },
+          {
+            $set: {
+              'comments.$.x': normalizedX,
+              'comments.$.y': normalizedY,
+              'comments.$.zIndex': normalizedZ,
+              updatedAt: new Date()
+            }
+          },
+          { new: true }
+        ).lean();
+
+        if (!entry) return;
+
+        const movedComment = entry.comments.find((comment) => comment._id.toString() === commentId.toString());
+        if (!movedComment) return;
+
+        io.to(`couple-${coupleId}`).emit('diary-comment-moved', {
+          coupleId,
+          date: start,
+          comment: movedComment,
+          movedBy: userId
+        });
+      } catch (error) {
+        console.error('🔥 Move diary comment socket error:', error);
       }
     });
   });
