@@ -2,6 +2,7 @@ const Message = require('../models/Message');
 const Couple = require('../models/Couple');
 const CanvasState = require('../models/CanvasState');
 const DiaryEntry = require('../models/DiaryEntry');
+const CinemaState = require('../models/CinemaState');
 
 const getDateRange = (dateInput) => {
   const base = dateInput ? new Date(dateInput) : new Date();
@@ -611,6 +612,354 @@ module.exports = (io) => {
         });
       } catch (error) {
         console.error('🔥 Move diary comment socket error:', error);
+      }
+    });
+
+    // Cinema - request current room state
+    socket.on('request-cinema-state', async (data) => {
+      try {
+        const { coupleId } = data;
+        const couple = await Couple.findById(coupleId);
+        if (!couple) return;
+
+        const isPartOfCouple =
+          couple.user1Id.toString() === userId ||
+          couple.user2Id.toString() === userId;
+        if (!isPartOfCouple) return;
+
+        let cinema = await CinemaState.findOne({ coupleId }).lean();
+        if (!cinema) {
+          cinema = await CinemaState.create({
+            coupleId,
+            queue: [],
+            currentIndex: 0,
+            isPlaying: false,
+            currentTime: 0,
+            volume: 0.8,
+            lastUpdatedBy: userId
+          });
+          cinema = cinema.toObject();
+        }
+
+        socket.emit('cinema-state', cinema);
+      } catch (error) {
+        console.error('🔥 Request cinema state socket error:', error);
+      }
+    });
+
+    // Cinema - invitation ping when partner enters theater
+    socket.on('cinema-entered', async (data) => {
+      try {
+        const { coupleId } = data;
+        socket.to(`couple-${coupleId}`).emit('cinema-invite', {
+          coupleId,
+          fromUserId: userId,
+          timestamp: new Date()
+        });
+      } catch (error) {
+        console.error('🔥 Cinema entered socket error:', error);
+      }
+    });
+
+    // Cinema - add queue item
+    socket.on('cinema-add-to-queue', async (data) => {
+      try {
+        const { coupleId, url, title } = data;
+        if (!url) return;
+
+        const cinema = await CinemaState.findOneAndUpdate(
+          { coupleId },
+          {
+            $setOnInsert: {
+              coupleId,
+              isPlaying: false,
+              currentTime: 0,
+              currentIndex: 0,
+              volume: 0.8
+            },
+            $push: {
+              queue: {
+                url: String(url).trim(),
+                title: String(title || 'Movie Night').trim(),
+                addedBy: userId,
+                addedAt: new Date()
+              }
+            },
+            $set: {
+              lastUpdatedBy: userId,
+              updatedAt: new Date()
+            }
+          },
+          { upsert: true, new: true }
+        ).lean();
+
+        io.to(`couple-${coupleId}`).emit('cinema-state', cinema);
+      } catch (error) {
+        console.error('🔥 Cinema add queue socket error:', error);
+      }
+    });
+
+    // Cinema - remove queue item
+    socket.on('cinema-remove-from-queue', async (data) => {
+      try {
+        const { coupleId, index } = data;
+        const cinema = await CinemaState.findOne({ coupleId });
+        if (!cinema || !Array.isArray(cinema.queue)) return;
+
+        const idx = Number(index);
+        if (Number.isNaN(idx) || idx < 0 || idx >= cinema.queue.length) return;
+
+        cinema.queue.splice(idx, 1);
+        if (cinema.currentIndex >= cinema.queue.length) {
+          cinema.currentIndex = Math.max(0, cinema.queue.length - 1);
+        }
+        cinema.lastUpdatedBy = userId;
+        await cinema.save();
+
+        io.to(`couple-${coupleId}`).emit('cinema-state', cinema.toObject());
+      } catch (error) {
+        console.error('🔥 Cinema remove queue socket error:', error);
+      }
+    });
+
+    // Cinema - playback controls (play/pause/seek/volume)
+    socket.on('cinema-playback', async (data) => {
+      try {
+        const { coupleId, action, time, volume } = data;
+        const cinema = await CinemaState.findOneAndUpdate(
+          { coupleId },
+          {
+            $setOnInsert: {
+              coupleId,
+              queue: [],
+              currentIndex: 0,
+              volume: 0.8,
+              currentTime: 0,
+              isPlaying: false
+            }
+          },
+          { upsert: true, new: true }
+        );
+
+        if (action === 'play') cinema.isPlaying = true;
+        if (action === 'pause') cinema.isPlaying = false;
+        if (action === 'seek') cinema.currentTime = Math.max(0, Number(time) || 0);
+        if (action === 'volume') {
+          const nextVolume = Number(volume);
+          cinema.volume = Number.isFinite(nextVolume) ? Math.max(0, Math.min(1, nextVolume)) : cinema.volume;
+        }
+
+        if (action !== 'seek' && Number.isFinite(Number(time))) {
+          cinema.currentTime = Math.max(0, Number(time));
+        }
+
+        cinema.lastUpdatedBy = userId;
+        cinema.updatedAt = new Date();
+        await cinema.save();
+
+        io.to(`couple-${coupleId}`).emit('cinema-playback-update', {
+          action,
+          time: cinema.currentTime,
+          volume: cinema.volume,
+          isPlaying: cinema.isPlaying,
+          updatedBy: userId,
+          timestamp: new Date()
+        });
+      } catch (error) {
+        console.error('🔥 Cinema playback socket error:', error);
+      }
+    });
+
+    // Cinema - jump to queue item
+    socket.on('cinema-select-index', async (data) => {
+      try {
+        const { coupleId, index } = data;
+        const cinema = await CinemaState.findOne({ coupleId });
+        if (!cinema || !Array.isArray(cinema.queue) || cinema.queue.length === 0) return;
+
+        const idx = Math.max(0, Math.min(cinema.queue.length - 1, Number(index) || 0));
+        cinema.currentIndex = idx;
+        cinema.currentTime = 0;
+        cinema.isPlaying = true;
+        cinema.lastUpdatedBy = userId;
+        await cinema.save();
+
+        io.to(`couple-${coupleId}`).emit('cinema-state', cinema.toObject());
+        io.to(`couple-${coupleId}`).emit('cinema-playback-update', {
+          action: 'seek',
+          time: 0,
+          volume: cinema.volume,
+          isPlaying: true,
+          updatedBy: userId,
+          timestamp: new Date()
+        });
+      } catch (error) {
+        console.error('🔥 Cinema select index socket error:', error);
+      }
+    });
+
+    // Cinema v2 - request shared theater state
+    socket.on('REQUEST_CINEMA_SYNC', async (data) => {
+      try {
+        const { coupleId } = data;
+        const couple = await Couple.findById(coupleId).lean();
+        if (!couple) return;
+
+        const isPartOfCouple =
+          couple.user1Id?.toString() === userId ||
+          couple.user2Id?.toString() === userId;
+        if (!isPartOfCouple) return;
+
+        socket.emit('CINEMA_STATE', {
+          coupleId,
+          videoUrl: couple.cinemaVideoUrl || '',
+          isPlaying: Boolean(couple.cinemaIsPlaying),
+          currentTime: Number(couple.cinemaCurrentTime) || 0,
+          updatedAt: couple.cinemaUpdatedAt || null
+        });
+      } catch (error) {
+        console.error('🔥 REQUEST_CINEMA_SYNC socket error:', error);
+      }
+    });
+
+    // Cinema v2 - load new YouTube URL for both users
+    socket.on('LOAD_VIDEO', async (data) => {
+      try {
+        const { coupleId, videoUrl, countdown = 3 } = data;
+        if (!videoUrl) return;
+
+        const couple = await Couple.findById(coupleId);
+        if (!couple) return;
+
+        const isPartOfCouple =
+          couple.user1Id?.toString() === userId ||
+          couple.user2Id?.toString() === userId;
+        if (!isPartOfCouple) return;
+
+        couple.cinemaVideoUrl = String(videoUrl).trim();
+        couple.cinemaIsPlaying = false;
+        couple.cinemaCurrentTime = 0;
+        couple.cinemaUpdatedAt = new Date();
+        await couple.save();
+
+        io.to(`couple-${coupleId}`).emit('CINEMA_COUNTDOWN', {
+          coupleId,
+          fromUserId: userId,
+          seconds: Math.max(1, Number(countdown) || 3),
+          message: 'Partner has picked a movie!'
+        });
+
+        io.to(`couple-${coupleId}`).emit('LOAD_VIDEO', {
+          coupleId,
+          videoUrl: couple.cinemaVideoUrl,
+          startAt: 0,
+          autoplayAfterCountdown: true,
+          fromUserId: userId
+        });
+      } catch (error) {
+        console.error('🔥 LOAD_VIDEO socket error:', error);
+      }
+    });
+
+    // Cinema v2 - clear current video for both users
+    socket.on('CLEAR_VIDEO', async (data) => {
+      try {
+        const { coupleId } = data;
+        const couple = await Couple.findById(coupleId);
+        if (!couple) return;
+
+        const isPartOfCouple =
+          couple.user1Id?.toString() === userId ||
+          couple.user2Id?.toString() === userId;
+        if (!isPartOfCouple) return;
+
+        couple.cinemaVideoUrl = '';
+        couple.cinemaIsPlaying = false;
+        couple.cinemaCurrentTime = 0;
+        couple.cinemaUpdatedAt = new Date();
+        await couple.save();
+
+        io.to(`couple-${coupleId}`).emit('CLEAR_VIDEO', {
+          coupleId,
+          updatedBy: userId,
+          timestamp: new Date()
+        });
+      } catch (error) {
+        console.error('🔥 CLEAR_VIDEO socket error:', error);
+      }
+    });
+
+    // Cinema v2 - synchronize play/pause state
+    socket.on('SYNC_PLAYBACK', async (data) => {
+      try {
+        const { coupleId, isPlaying, currentTime } = data;
+        const couple = await Couple.findById(coupleId);
+        if (!couple) return;
+
+        const isPartOfCouple =
+          couple.user1Id?.toString() === userId ||
+          couple.user2Id?.toString() === userId;
+        if (!isPartOfCouple) return;
+
+        couple.cinemaIsPlaying = Boolean(isPlaying);
+        if (Number.isFinite(Number(currentTime))) {
+          couple.cinemaCurrentTime = Math.max(0, Number(currentTime));
+        }
+        couple.cinemaUpdatedAt = new Date();
+        await couple.save();
+
+        io.to(`couple-${coupleId}`).emit('SYNC_PLAYBACK', {
+          coupleId,
+          isPlaying: couple.cinemaIsPlaying,
+          currentTime: couple.cinemaCurrentTime,
+          updatedBy: userId,
+          timestamp: new Date()
+        });
+      } catch (error) {
+        console.error('🔥 SYNC_PLAYBACK socket error:', error);
+      }
+    });
+
+    // Cinema v2 - synchronize seeks
+    socket.on('SEEK_VIDEO', async (data) => {
+      try {
+        const { coupleId, currentTime } = data;
+        const couple = await Couple.findById(coupleId);
+        if (!couple) return;
+
+        const isPartOfCouple =
+          couple.user1Id?.toString() === userId ||
+          couple.user2Id?.toString() === userId;
+        if (!isPartOfCouple) return;
+
+        couple.cinemaCurrentTime = Math.max(0, Number(currentTime) || 0);
+        couple.cinemaUpdatedAt = new Date();
+        await couple.save();
+
+        io.to(`couple-${coupleId}`).emit('SEEK_VIDEO', {
+          coupleId,
+          currentTime: couple.cinemaCurrentTime,
+          updatedBy: userId,
+          timestamp: new Date()
+        });
+      } catch (error) {
+        console.error('🔥 SEEK_VIDEO socket error:', error);
+      }
+    });
+
+    // Cinema v2 - WebRTC signal relay for reaction bubbles
+    socket.on('CINEMA_SIGNAL', async (data) => {
+      try {
+        const { coupleId, signal } = data;
+        if (!signal) return;
+
+        socket.to(`couple-${coupleId}`).emit('CINEMA_SIGNAL', {
+          coupleId,
+          fromUserId: userId,
+          signal
+        });
+      } catch (error) {
+        console.error('🔥 CINEMA_SIGNAL socket error:', error);
       }
     });
   });

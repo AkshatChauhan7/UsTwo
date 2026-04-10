@@ -38,6 +38,22 @@ const CoupleSchema = new mongoose.Schema({
   lastActivityAt: {
     type: Date,
     default: Date.now
+  },
+  cinemaVideoUrl: {
+    type: String,
+    default: ''
+  },
+  cinemaIsPlaying: {
+    type: Boolean,
+    default: false
+  },
+  cinemaCurrentTime: {
+    type: Number,
+    default: 0
+  },
+  cinemaUpdatedAt: {
+    type: Date,
+    default: null
   }
 });
 

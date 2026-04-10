@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
 import api from '../api';
@@ -8,6 +8,7 @@ import InviteModal from '../components/InviteModal';
 import SharedCanvas from '../components/SharedCanvas';
 import MemoryLane from '../components/MemoryLane';
 import DiaryBook from '../components/DiaryBook';
+import CinemaTheater from '../components/CinemaTheater';
 
 const DashboardPage = () => {
   const { user, logout } = useAuth();
@@ -19,6 +20,8 @@ const DashboardPage = () => {
   const [mood, setMood] = useState('cozy');
   const [isDiaryOpen, setIsDiaryOpen] = useState(false);
   const [hasDiaryAlert, setHasDiaryAlert] = useState(false);
+  const [hasCinemaInvite, setHasCinemaInvite] = useState(false);
+  const previousMoodRef = useRef('cozy');
 
   useEffect(() => {
     if (!user?.id) return;
@@ -69,13 +72,34 @@ const DashboardPage = () => {
       }
     };
 
+    const onCinemaInvite = ({ fromUserId }) => {
+      if (fromUserId?.toString() === user?.id?.toString()) return;
+      if (activeTab !== 'cinema') {
+        setHasCinemaInvite(true);
+      }
+    };
+
     socket.on('diary-comment-added', onDiaryComment);
+    socket.on('cinema-invite', onCinemaInvite);
 
     return () => {
       socket.off('diary-comment-added', onDiaryComment);
+      socket.off('cinema-invite', onCinemaInvite);
       socket.emit('leave-room', { coupleId: coupleData._id });
     };
-  }, [socket, coupleData?._id, coupleData?.user1?._id, user?.id, isDiaryOpen]);
+  }, [socket, coupleData?._id, coupleData?.user1?._id, user?.id, isDiaryOpen, activeTab]);
+
+  useEffect(() => {
+    if (activeTab === 'cinema') {
+      if (mood !== 'movie') {
+        previousMoodRef.current = mood;
+      }
+      setMood('movie');
+      setHasCinemaInvite(false);
+    } else if (mood === 'movie') {
+      setMood(previousMoodRef.current || 'cozy');
+    }
+  }, [activeTab]);
 
   const handleLogout = () => {
     logout();
@@ -118,15 +142,18 @@ const DashboardPage = () => {
     night: 'Late Night',
     playful: 'Playful Vibe',
     deep: 'Deep Talk'
+    ,movie: 'Movie Night'
   };
+
+  const isCinemaActive = activeTab === 'cinema';
 
   return (
     <div
-      className={`h-dvh min-h-dvh overflow-hidden flex flex-col ustwo-ambient ${mood === 'night' ? 'ustwo-night' : 'bg-gradient-to-br from-rose-50 via-pink-50 to-purple-50'}`}
+      className={`h-dvh min-h-dvh overflow-hidden flex flex-col ustwo-ambient ${isCinemaActive ? 'bg-gradient-to-br from-[#17131f] via-[#231b31] to-[#0f0c14]' : mood === 'night' ? 'ustwo-night' : 'bg-gradient-to-br from-rose-50 via-pink-50 to-purple-50'}`}
     >
       {/* Compact top bar */}
-      <nav className="z-30 px-3 sm:px-4 pt-2 sm:pt-3">
-        <div className="max-w-7xl mx-auto ustwo-glass rounded-xl px-3 sm:px-4 py-2.5 relative z-10">
+      <nav className="sticky top-0 z-40 px-3 sm:px-4 pt-2 sm:pt-3">
+        <div className={`max-w-7xl mx-auto ustwo-glass rounded-xl px-3 sm:px-4 py-2.5 relative z-10 ${isCinemaActive ? 'opacity-85' : ''}`}>
           <div className="flex items-center justify-between gap-2 sm:gap-3">
             <div className="flex items-center gap-3 min-w-0">
             <div className="relative">
@@ -146,12 +173,14 @@ const DashboardPage = () => {
             <select
               value={mood}
               onChange={(e) => setMood(e.target.value)}
+              disabled={isCinemaActive}
               className="ustwo-pill bg-white/80 outline-none max-w-[110px]"
             >
               <option value="cozy">Cozy</option>
               <option value="night">Late Night</option>
               <option value="playful">Playful</option>
               <option value="deep">Deep Talk</option>
+              <option value="movie">Movie Night</option>
             </select>
             <button
               onClick={handleLogout}
@@ -162,7 +191,7 @@ const DashboardPage = () => {
           </div>
         </div>
 
-          <div className="grid grid-cols-3 gap-1 bg-white/70 rounded-lg p-1 border border-pink-100 mt-2">
+          <div className="grid grid-cols-4 gap-1 bg-white/70 rounded-lg p-1 border border-pink-100 mt-2">
             <button
               onClick={() => setActiveTab('chat')}
               className={`px-3 py-2 rounded-md text-sm font-semibold transition ${
@@ -193,12 +222,28 @@ const DashboardPage = () => {
             >
               📸 Memories
             </button>
+            <button
+              onClick={() => {
+                setActiveTab('cinema');
+                setHasCinemaInvite(false);
+              }}
+              className={`px-3 py-2 rounded-md text-sm font-semibold transition relative ${
+                activeTab === 'cinema'
+                  ? 'ustwo-brand-gradient text-white'
+                  : 'text-gray-700 hover:bg-pink-50'
+              } ${hasCinemaInvite && activeTab !== 'cinema' ? 'animate-heartbeat' : ''}`}
+            >
+              🍿 Cinema
+              {hasCinemaInvite && activeTab !== 'cinema' ? (
+                <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-rose-500" />
+              ) : null}
+            </button>
           </div>
         </div>
       </nav>
 
       {/* Main Chat Container */}
-      <div className="flex-1 min-h-0 overflow-hidden relative z-10 px-3 sm:px-4 pb-3 sm:pb-4 pt-1 sm:pt-2">
+      <div className={`flex-1 min-h-0 overflow-hidden relative z-10 px-3 sm:px-4 pb-3 sm:pb-4 pt-1 sm:pt-2 ${isCinemaActive ? 'pt-3 sm:pt-4' : ''}`}>
         <div className="h-full min-h-0 flex flex-col max-w-7xl mx-auto w-full">
           <div className="flex-1 min-h-0 overflow-hidden pt-1">
             {activeTab === 'chat' ? (
@@ -213,6 +258,13 @@ const DashboardPage = () => {
                 coupleId={coupleData._id}
                 mood={mood}
                 onBackToChat={() => setActiveTab('chat')}
+              />
+            ) : activeTab === 'cinema' ? (
+              <CinemaTheater
+                coupleId={coupleData._id}
+                user={user}
+                coupleData={coupleData}
+                partnerName={partnerName}
               />
             ) : (
               <MemoryLane
