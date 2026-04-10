@@ -13,7 +13,8 @@ const ChatWindow = ({ coupleId, partnerName, mood = 'cozy', onOpenCanvas }) => {
   const [isTyping, setIsTyping] = useState(false);
   const [isPartnerOnline, setIsPartnerOnline] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
-  const messagesEndRef = useRef(null);
+  const messagesContainerRef = useRef(null);
+  const shouldAutoScrollRef = useRef(true);
 
   // Load chat history on mount
   useEffect(() => {
@@ -30,14 +31,31 @@ const ChatWindow = ({ coupleId, partnerName, mood = 'cozy', onOpenCanvas }) => {
     };
 
     if (coupleId) {
+      shouldAutoScrollRef.current = true;
       loadHistory();
     }
   }, [coupleId]);
 
   // Scroll to bottom when messages change
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (!shouldAutoScrollRef.current) return;
+
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    container.scrollTo({
+      top: container.scrollHeight,
+      behavior: 'auto'
+    });
   }, [messages]);
+
+  const handleMessagesScroll = () => {
+    const el = messagesContainerRef.current;
+    if (!el) return;
+
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    shouldAutoScrollRef.current = distanceFromBottom < 72;
+  };
 
   // Socket event listeners
   useEffect(() => {
@@ -156,6 +174,8 @@ const ChatWindow = ({ coupleId, partnerName, mood = 'cozy', onOpenCanvas }) => {
 
   const handleSendMessage = (content) => {
     if (!content.trim()) return;
+
+    shouldAutoScrollRef.current = true;
 
     // Optimistically add message to UI
     const optimisticMessage = {
@@ -307,7 +327,11 @@ const ChatWindow = ({ coupleId, partnerName, mood = 'cozy', onOpenCanvas }) => {
       </div>
 
       {/* Messages Area */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-3 sm:px-4 md:px-5 py-3 sm:py-4">
+      <div
+        ref={messagesContainerRef}
+        onScroll={handleMessagesScroll}
+        className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain px-3 sm:px-4 md:px-5 py-3 sm:py-4"
+      >
         {messages.length === 0 ? (
           <div className={`flex flex-col items-center justify-center h-full ${mood === 'night' ? 'text-gray-300' : 'text-gray-500'}`}>
             <span className="text-4xl mb-4 animate-float-soft">💕</span>
@@ -333,7 +357,6 @@ const ChatWindow = ({ coupleId, partnerName, mood = 'cozy', onOpenCanvas }) => {
                   <TypingIndicator />
                 </div>
               )}
-              <div ref={messagesEndRef} />
             </div>
           </>
         )}
