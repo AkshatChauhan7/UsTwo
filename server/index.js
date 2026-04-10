@@ -46,6 +46,7 @@ let isDBConnected = false;
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Request logging
 app.use((req, res, next) => {
@@ -126,14 +127,20 @@ function registerRoutes() {
   const authRoutes = require('./routes/auth');
   const couplesRoutes = require('./routes/couples');
   const chatRoutes = require('./routes/chat');
+  const memoriesRoutes = require('./routes/memories');
+  const diaryRoutes = require('./routes/diary');
   
   app.use('/api/auth', requireDB, authRoutes);
   app.use('/api/couples', requireDB, couplesRoutes);
   app.use('/api/chat', requireDB, chatRoutes);
+  app.use('/api/memories', requireDB, memoriesRoutes);
+  app.use('/api/diary', requireDB, diaryRoutes);
   
   console.log('✅ Auth routes registered at /api/auth');
   console.log('✅ Couples routes registered at /api/couples');
   console.log('✅ Chat routes registered at /api/chat');
+  console.log('✅ Memories routes registered at /api/memories');
+  console.log('✅ Diary routes registered at /api/diary');
   console.log('📍 Socket.io listening for real-time events');
 
   // Setup Socket.io handlers
