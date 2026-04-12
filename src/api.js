@@ -109,7 +109,17 @@ const apiCall = {
     API.post(`/diary/${coupleId}/comment`, payload),
 
   moveDiaryComment: (coupleId, commentId, payload) =>
-    API.put(`/diary/${coupleId}/comment/${commentId}/move`, payload)
+    API.put(`/diary/${coupleId}/comment/${commentId}/move`, payload),
+
+  // Shared Bucket List
+  getBucketListItems: () =>
+    API.get('/bucketlist'),
+
+  createBucketListItem: (payload) =>
+    API.post('/bucketlist', payload),
+
+  deleteBucketListItem: (itemId) =>
+    API.delete(`/bucketlist/${itemId}`)
 };
 
 export { apiCall };

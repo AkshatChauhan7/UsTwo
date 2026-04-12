@@ -20,6 +20,8 @@ const io = new Server(server, {
   }
 });
 
+app.set('io', io);
+
 // Socket.io authentication middleware
 io.use((socket, next) => {
   const token = socket.handshake.auth.token;
@@ -129,18 +131,21 @@ function registerRoutes() {
   const chatRoutes = require('./routes/chat');
   const memoriesRoutes = require('./routes/memories');
   const diaryRoutes = require('./routes/diary');
+  const bucketlistRoutes = require('./routes/bucketlist');
   
   app.use('/api/auth', requireDB, authRoutes);
   app.use('/api/couples', requireDB, couplesRoutes);
   app.use('/api/chat', requireDB, chatRoutes);
   app.use('/api/memories', requireDB, memoriesRoutes);
   app.use('/api/diary', requireDB, diaryRoutes);
+  app.use('/api/bucketlist', requireDB, bucketlistRoutes);
   
   console.log('✅ Auth routes registered at /api/auth');
   console.log('✅ Couples routes registered at /api/couples');
   console.log('✅ Chat routes registered at /api/chat');
   console.log('✅ Memories routes registered at /api/memories');
   console.log('✅ Diary routes registered at /api/diary');
+  console.log('✅ Bucket list routes registered at /api/bucketlist');
   console.log('📍 Socket.io listening for real-time events');
 
   // Setup Socket.io handlers

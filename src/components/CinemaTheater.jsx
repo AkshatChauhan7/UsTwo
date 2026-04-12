@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useSocket } from '../hooks/useSocket';
 import api from '../api';
 import SynchronizedPlayer from './SynchronizedPlayer';
-import ReactionBubbles from './ReactionBubbles';
+import WatchPartyCall from './WatchPartyCall';
 
 const normalizeYouTubeUrl = (value) => {
   if (!value) return '';
@@ -39,7 +39,10 @@ const CinemaTheater = ({ coupleId, user, coupleData, partnerName }) => {
   const suppressRemoteRef = useRef(false);
   const countdownTimerRef = useRef(null);
 
-  const isInitiator = useMemo(() => coupleData?.user1?._id === user?.id, [coupleData?.user1?._id, user?.id]);
+  const partner = useMemo(
+    () => (coupleData?.user1?._id === user?.id ? coupleData?.user2 : coupleData?.user1),
+    [coupleData?.user1?._id, coupleData?.user1, coupleData?.user2, user?.id]
+  );
   const effectiveVolume = partnerSpeaking ? Math.max(0.2, baseVolume * 0.55) : baseVolume;
 
   useEffect(() => {
@@ -138,7 +141,7 @@ const CinemaTheater = ({ coupleId, user, coupleData, partnerName }) => {
       if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
       socket.emit('leave-room', { coupleId });
     };
-  }, [socket, coupleId, user?.id, currentTime]);
+  }, [socket, coupleId, user?.id]);
 
   useEffect(() => {
     if (!socket || !coupleId) return;
@@ -276,7 +279,7 @@ const CinemaTheater = ({ coupleId, user, coupleData, partnerName }) => {
           </button>
         </div>
 
-        <div className="absolute right-2 sm:right-3 top-2 sm:top-3 w-[300px] max-w-[94%] ustwo-glass rounded-xl p-2 sm:p-3 bg-black/35 border-white/20">
+        <div className="absolute right-2 sm:right-3 top-[226px] sm:top-[280px] w-[300px] max-w-[94%] ustwo-glass rounded-xl p-2 sm:p-3 bg-black/35 border-white/20">
           <div className="max-h-32 overflow-y-auto space-y-1.5 mb-2">
             {messages.slice(-7).map((msg) => (
               <div key={msg._id} className="text-xs text-white/90">
@@ -299,12 +302,12 @@ const CinemaTheater = ({ coupleId, user, coupleData, partnerName }) => {
           </div>
         </div>
 
-        <ReactionBubbles
+        <WatchPartyCall
           socket={socket}
           coupleId={coupleId}
           user={user}
+          partner={partner}
           partnerName={partnerName}
-          isInitiator={isInitiator}
           onRemoteSpeaking={setPartnerSpeaking}
         />
       </div>

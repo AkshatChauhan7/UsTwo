@@ -10,8 +10,9 @@ import MemoryLane from '../components/MemoryLane';
 import DiaryBook from '../components/DiaryBook';
 import CinemaTheater from '../components/CinemaTheater';
 import Shopping from '../components/Shopping';
+import SharedBucketList from '../components/SharedBucketList';
 
-const validTabs = ['chat', 'canvas', 'memories', 'cinema', 'shopping'];
+const validTabs = ['chat', 'canvas', 'memories', 'cinema', 'shopping', 'bucketlist'];
 
 const getTabFromPath = (pathname) => {
   const tab = pathname?.split('/')[2];
@@ -214,7 +215,7 @@ const DashboardPage = () => {
           </div>
         </div>
 
-          <div className="grid grid-cols-5 gap-1 bg-white/70 rounded-lg p-1 border border-pink-100 mt-2">
+          <div className="grid grid-cols-6 gap-1 bg-white/70 rounded-lg p-1 border border-pink-100 mt-2">
             <button
               onClick={() => handleTabChange('chat')}
               className={`px-3 py-2 rounded-md text-sm font-semibold transition ${
@@ -271,6 +272,16 @@ const DashboardPage = () => {
             >
               🛍️ Shopping
             </button>
+            <button
+              onClick={() => handleTabChange('bucketlist')}
+              className={`px-3 py-2 rounded-md text-sm font-semibold transition ${
+                activeTab === 'bucketlist'
+                  ? 'ustwo-brand-gradient text-white'
+                  : 'text-gray-700 hover:bg-pink-50'
+              }`}
+            >
+              🎯 Bucket
+            </button>
           </div>
         </div>
       </nav>
@@ -301,6 +312,12 @@ const DashboardPage = () => {
               />
             ) : activeTab === 'shopping' ? (
               <Shopping mood={mood} />
+            ) : activeTab === 'bucketlist' ? (
+              <SharedBucketList
+                coupleId={coupleData._id}
+                mood={mood}
+                partnerName={partnerName}
+              />
             ) : (
               <MemoryLane
                 coupleId={coupleData._id}
