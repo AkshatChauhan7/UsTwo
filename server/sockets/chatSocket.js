@@ -3,6 +3,7 @@ const Couple = require('../models/Couple');
 const CanvasState = require('../models/CanvasState');
 const DiaryEntry = require('../models/DiaryEntry');
 const CinemaState = require('../models/CinemaState');
+const BucketListItem = require('../models/BucketListItem');
 
 const getDateRange = (dateInput) => {
   const base = dateInput ? new Date(dateInput) : new Date();
@@ -256,6 +257,51 @@ module.exports = (io) => {
         userId,
         timestamp: new Date()
       });
+    });
+
+    // Bucket List - dual approval toggle
+    socket.on('toggle-bucket-item', async (data) => {
+      try {
+        const { itemId } = data || {};
+        if (!itemId) return;
+
+        const item = await BucketListItem.findById(itemId);
+        if (!item) return;
+
+        const couple = await Couple.findById(item.coupleId);
+        if (!couple) return;
+
+        const isPartOfCouple =
+          couple.user1Id.toString() === userId ||
+          couple.user2Id.toString() === userId;
+        if (!isPartOfCouple) return;
+
+        const alreadyChecked = item.checks.some((id) => id.toString() === userId);
+
+        if (alreadyChecked) {
+          item.checks = item.checks.filter((id) => id.toString() !== userId);
+        } else {
+          item.checks.push(userId);
+        }
+
+        item.status = BucketListItem.deriveStatus(item.checks);
+        item.updatedAt = new Date();
+        await item.save();
+
+        io.to(`couple-${item.coupleId}`).emit('bucket-item-updated', {
+          _id: item._id,
+          coupleId: item.coupleId,
+          title: item.title,
+          description: item.description,
+          createdBy: item.createdBy,
+          checks: item.checks,
+          status: item.status,
+          createdAt: item.createdAt,
+          updatedAt: item.updatedAt
+        });
+      } catch (error) {
+        console.error('🔥 Toggle bucket item socket error:', error);
+      }
     });
 
     // Canvas - Draw stroke
@@ -947,20 +993,26 @@ module.exports = (io) => {
       }
     });
 
-    // Cinema v2 - WebRTC signal relay for reaction bubbles
-    socket.on('CINEMA_SIGNAL', async (data) => {
+    // Cinema v2 - WebRTC signaling relay (offer / answer / ice-candidate)
+    const handleCinemaSignal = async (data) => {
       try {
-        const { coupleId, signal } = data;
-        if (!signal) return;
+        const { coupleId, targetUserId, callerId, signalData, signal } = data || {};
+        const normalizedSignal = signalData || signal;
+        if (!coupleId || !normalizedSignal) return;
 
-        socket.to(`couple-${coupleId}`).emit('CINEMA_SIGNAL', {
+        const roomName = `couple-${coupleId}`;
+        io.to(roomName).emit('CINEMA_SIGNAL', {
           coupleId,
-          fromUserId: userId,
-          signal
+          targetUserId: targetUserId || null,
+          callerId: callerId || userId,
+          signalData: normalizedSignal
         });
       } catch (error) {
         console.error('🔥 CINEMA_SIGNAL socket error:', error);
       }
-    });
+    };
+
+    socket.on('CINEMA_SIGNAL', handleCinemaSignal);
+    socket.on('webrtc-signal', handleCinemaSignal);
   });
 };
