@@ -61,8 +61,8 @@ const apiCall = {
   getChatHistory: (coupleId, limit = 50, skip = 0) =>
     API.get(`/chat/history/${coupleId}`, { params: { limit, skip } }),
 
-  sendMessage: (coupleId, content) =>
-    API.post('/chat/send', { coupleId, content }),
+  sendMessage: (coupleId, content, clientTempId) =>
+    API.post('/chat/send', { coupleId, content, clientTempId }),
 
   sendMediaMessage: (coupleId, file, type, content = '') => {
     const formData = new FormData();
