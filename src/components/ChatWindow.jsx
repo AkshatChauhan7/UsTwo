@@ -6,13 +6,21 @@ import MessageBubble from './MessageBubble';
 import TypingIndicator from './TypingIndicator';
 import InputBar from './InputBar';
 
-const ChatWindow = ({ coupleId, partnerName, mood = 'cozy', onOpenCanvas }) => {
+const ChatWindow = ({
+  coupleId,
+  partnerName,
+  mood = 'cozy',
+  onOpenCanvas,
+  onToggleMenu,
+  isMobileMenuOpen = false
+}) => {
   const { user } = useAuth();
   const socket = useSocket();
   const [messages, setMessages] = useState([]);
   const [isTyping, setIsTyping] = useState(false);
   const [isPartnerOnline, setIsPartnerOnline] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
+  const [isMediaUploading, setIsMediaUploading] = useState(false);
   const messagesContainerRef = useRef(null);
   const shouldAutoScrollRef = useRef(true);
 
@@ -181,6 +189,8 @@ const ChatWindow = ({ coupleId, partnerName, mood = 'cozy', onOpenCanvas }) => {
     const optimisticMessage = {
       _id: `temp-${Date.now()}`,
       content,
+      messageType: 'text',
+      mediaUrl: null,
       senderId: { _id: user?.id, name: user?.name, initials: user?.initials },
       timestamp: new Date().toISOString(),
       read: true,
@@ -208,6 +218,21 @@ const ChatWindow = ({ coupleId, partnerName, mood = 'cozy', onOpenCanvas }) => {
           );
         })
         .catch(console.error);
+    }
+  };
+
+  const handleSendMedia = async (file, mediaType) => {
+    if (!coupleId || !file) return;
+    setIsMediaUploading(true);
+    try {
+      await api.sendMediaMessage(coupleId, file, mediaType);
+      shouldAutoScrollRef.current = true;
+    } catch (error) {
+      console.error('Failed to upload media message:', error);
+      const reason = error?.response?.data?.error || error?.response?.data?.msg || 'Upload failed';
+      window.alert(reason);
+    } finally {
+      setIsMediaUploading(false);
     }
   };
 
@@ -292,18 +317,36 @@ const ChatWindow = ({ coupleId, partnerName, mood = 'cozy', onOpenCanvas }) => {
 
   return (
     <div
-      className={`flex flex-col h-full min-h-0 rounded-2xl border overflow-hidden ustwo-soft-shadow ${
+      className={`relative flex flex-col h-full min-h-0 rounded-none sm:rounded-2xl border overflow-hidden ustwo-soft-shadow ${
         mood === 'night'
           ? 'bg-[#1f172a] border-[#3a2d4c]'
-          : 'bg-gradient-to-br from-rose-50/90 via-pink-50/90 to-purple-50/90 border-pink-100'
+          : 'bg-rose-50 border-pink-100'
       }`}
     >
       {/* Chat Header */}
-      <div className={`px-4 sm:px-5 py-3 sm:py-4 border-b ${mood === 'night' ? 'border-[#3a2d4c] bg-white/5' : 'border-pink-200 bg-white/70'} backdrop-blur-xl`}>
+      <div className={`px-2.5 sm:px-5 py-3 sm:py-4 border-b ${mood === 'night' ? 'border-[#3a2d4c] bg-white/5' : 'border-pink-200 bg-white/70'} backdrop-blur-xl`}>
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
-          <div className="min-w-0">
-            <h2 className={`text-lg sm:text-xl font-semibold truncate ${mood === 'night' ? 'text-white' : 'text-gray-800'}`}>{partnerName}</h2>
-            <p className={`text-xs ${mood === 'night' ? 'text-gray-300' : 'text-gray-500'}`}>This space belongs only to us</p>
+          <div className="min-w-0 flex items-start gap-2">
+            <button
+              type="button"
+              onClick={onToggleMenu}
+              className="md:hidden min-w-[44px] min-h-[44px] rounded-full border border-pink-100 bg-white/80 text-gray-600 flex items-center justify-center"
+              aria-label={isMobileMenuOpen ? 'Back' : 'Menu'}
+            >
+              {isMobileMenuOpen ? (
+                <svg className="w-5 h-5 stroke-current fill-none stroke-2" viewBox="0 0 24 24">
+                  <path d="M15 18l-6-6 6-6" />
+                </svg>
+              ) : (
+                <svg className="w-5 h-5 stroke-current fill-none stroke-2" viewBox="0 0 24 24">
+                  <path d="M3 6h18M3 12h18M3 18h18" />
+                </svg>
+              )}
+            </button>
+            <div className="min-w-0">
+              <h2 className={`text-lg sm:text-xl font-semibold truncate ${mood === 'night' ? 'text-white' : 'text-gray-800'}`}>{partnerName}</h2>
+              <p className={`text-xs ${mood === 'night' ? 'text-gray-300' : 'text-gray-500'}`}>This space belongs only to us</p>
+            </div>
           </div>
           <div className="flex items-center gap-2 self-start sm:self-auto">
             <button
@@ -330,12 +373,12 @@ const ChatWindow = ({ coupleId, partnerName, mood = 'cozy', onOpenCanvas }) => {
       <div
         ref={messagesContainerRef}
         onScroll={handleMessagesScroll}
-        className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain px-3 sm:px-4 md:px-5 py-3 sm:py-4"
+        className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain px-2 sm:px-4 md:px-5 py-3 sm:py-4 pb-28 md:pb-4"
       >
         {messages.length === 0 ? (
-          <div className={`flex flex-col items-center justify-center h-full ${mood === 'night' ? 'text-gray-300' : 'text-gray-500'}`}>
-            <span className="text-4xl mb-4 animate-float-soft">💕</span>
-            <p>Start your conversation with {partnerName}!</p>
+          <div className={`flex flex-col items-center justify-center h-full text-center px-4 ${mood === 'night' ? 'text-gray-300' : 'text-gray-500'}`}>
+            <span className="text-3xl sm:text-4xl mb-3 animate-float-soft">💕</span>
+            <p className="text-sm sm:text-base">Start your conversation with {partnerName}!</p>
           </div>
         ) : (
           <>
@@ -365,8 +408,10 @@ const ChatWindow = ({ coupleId, partnerName, mood = 'cozy', onOpenCanvas }) => {
       {/* Input Area */}
       <InputBar
         onSendMessage={handleSendMessage}
+        onSendMedia={handleSendMedia}
         onTyping={handleTyping}
         onStopTyping={handleStopTyping}
+        mediaUploading={isMediaUploading}
         placeholder={`Message ${partnerName}...`}
       />
     </div>
