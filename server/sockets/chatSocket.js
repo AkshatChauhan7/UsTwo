@@ -5,6 +5,9 @@ const DiaryEntry = require('../models/DiaryEntry');
 const CinemaState = require('../models/CinemaState');
 const BucketListItem = require('../models/BucketListItem');
 
+// Transient in-memory Tic-Tac-Toe state per couple (no DB persistence)
+const tictactoeStateByCouple = new Map();
+
 const getDateRange = (dateInput) => {
   const base = dateInput ? new Date(dateInput) : new Date();
   const start = new Date(base);
@@ -56,6 +59,11 @@ module.exports = (io) => {
         console.log(`✅ User ${userId} joined room: couple-${coupleId}`);
 
         await updateCouplePresence(coupleId);
+
+        const tictactoeState = tictactoeStateByCouple.get(String(coupleId));
+        if (tictactoeState) {
+          socket.emit('tictactoe-update', tictactoeState);
+        }
 
         // Notify partner that user is online
         socket.to(`couple-${coupleId}`).emit('partner-online', {
@@ -1014,5 +1022,57 @@ module.exports = (io) => {
 
     socket.on('CINEMA_SIGNAL', handleCinemaSignal);
     socket.on('webrtc-signal', handleCinemaSignal);
+
+    // Tic-Tac-Toe - sync move state in couple room
+    socket.on('tictactoe-move', async (payload) => {
+      try {
+        const { coupleId, board, nextTurn, winner } = payload || {};
+        if (!coupleId || !Array.isArray(board) || board.length !== 9) return;
+
+        const state = {
+          coupleId,
+          board,
+          nextTurn: nextTurn || null,
+          winner: winner || null,
+          updatedAt: Date.now()
+        };
+        tictactoeStateByCouple.set(String(coupleId), state);
+
+        io.to(`couple-${coupleId}`).emit('tictactoe-update', {
+          ...state
+        });
+      } catch (error) {
+        console.error('🔥 tictactoe-move socket error:', error);
+      }
+    });
+
+    // Tic-Tac-Toe - get latest transient board state when (re)joining
+    socket.on('tictactoe-sync-request', async (payload) => {
+      try {
+        const { coupleId } = payload || {};
+        if (!coupleId) return;
+
+        const state = tictactoeStateByCouple.get(String(coupleId));
+        if (!state) return;
+
+        socket.emit('tictactoe-update', state);
+      } catch (error) {
+        console.error('🔥 tictactoe-sync-request socket error:', error);
+      }
+    });
+
+    // Tic-Tac-Toe - restart board for both users
+    socket.on('tictactoe-restart', async (payload) => {
+      try {
+        const { coupleId } = payload || {};
+        if (!coupleId) return;
+
+        tictactoeStateByCouple.delete(String(coupleId));
+
+        io.to(`couple-${coupleId}`).emit('tictactoe-reset', { coupleId });
+      } catch (error) {
+        console.error('🔥 tictactoe-restart socket error:', error);
+      }
+    });
   });
 };
