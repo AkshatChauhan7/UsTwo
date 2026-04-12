@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import api from '../api';
 import { useSocket } from '../hooks/useSocket';
 import ChatWindow from '../components/ChatWindow';
@@ -9,19 +9,42 @@ import SharedCanvas from '../components/SharedCanvas';
 import MemoryLane from '../components/MemoryLane';
 import DiaryBook from '../components/DiaryBook';
 import CinemaTheater from '../components/CinemaTheater';
+import Shopping from '../components/Shopping';
+
+const validTabs = ['chat', 'canvas', 'memories', 'cinema', 'shopping'];
+
+const getTabFromPath = (pathname) => {
+  const tab = pathname?.split('/')[2];
+  return validTabs.includes(tab) ? tab : 'chat';
+};
 
 const DashboardPage = () => {
   const { user, logout } = useAuth();
   const socket = useSocket();
   const navigate = useNavigate();
+  const location = useLocation();
   const [coupleData, setCoupleData] = useState(null);
   const [isLoadingCouple, setIsLoadingCouple] = useState(true);
-  const [activeTab, setActiveTab] = useState('chat');
+  const [activeTab, setActiveTab] = useState(() => getTabFromPath(location.pathname));
   const [mood, setMood] = useState('cozy');
   const [isDiaryOpen, setIsDiaryOpen] = useState(false);
   const [hasDiaryAlert, setHasDiaryAlert] = useState(false);
   const [hasCinemaInvite, setHasCinemaInvite] = useState(false);
   const previousMoodRef = useRef('cozy');
+
+  const handleTabChange = (nextTab) => {
+    setActiveTab(nextTab);
+    navigate(`/dashboard/${nextTab}`);
+  };
+
+  useEffect(() => {
+    const nextTab = getTabFromPath(location.pathname);
+    setActiveTab(nextTab);
+
+    if (location.pathname === '/dashboard') {
+      navigate('/dashboard/chat', { replace: true });
+    }
+  }, [location.pathname, navigate]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -114,7 +137,7 @@ const DashboardPage = () => {
   // If no couple is connected yet, show the invite modal
   if (isLoadingCouple) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-pink-100 to-purple-100 flex items-center justify-center">
+  <div className="min-h-screen bg-linear-to-br from-pink-100 to-purple-100 flex items-center justify-center">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-pink-600 mb-4"></div>
           <p className="text-gray-600 font-semibold">Loading...</p>
@@ -149,7 +172,7 @@ const DashboardPage = () => {
 
   return (
     <div
-      className={`h-dvh min-h-dvh overflow-hidden flex flex-col ustwo-ambient ${isCinemaActive ? 'bg-gradient-to-br from-[#17131f] via-[#231b31] to-[#0f0c14]' : mood === 'night' ? 'ustwo-night' : 'bg-gradient-to-br from-rose-50 via-pink-50 to-purple-50'}`}
+  className={`h-dvh min-h-dvh overflow-hidden flex flex-col ustwo-ambient ${isCinemaActive ? 'bg-linear-to-br from-[#17131f] via-[#231b31] to-[#0f0c14]' : mood === 'night' ? 'ustwo-night' : 'bg-linear-to-br from-rose-50 via-pink-50 to-purple-50'}`}
     >
       {/* Compact top bar */}
       <nav className="sticky top-0 z-40 px-3 sm:px-4 pt-2 sm:pt-3">
@@ -191,9 +214,9 @@ const DashboardPage = () => {
           </div>
         </div>
 
-          <div className="grid grid-cols-4 gap-1 bg-white/70 rounded-lg p-1 border border-pink-100 mt-2">
+          <div className="grid grid-cols-5 gap-1 bg-white/70 rounded-lg p-1 border border-pink-100 mt-2">
             <button
-              onClick={() => setActiveTab('chat')}
+              onClick={() => handleTabChange('chat')}
               className={`px-3 py-2 rounded-md text-sm font-semibold transition ${
                 activeTab === 'chat'
                   ? 'ustwo-brand-gradient text-white'
@@ -203,7 +226,7 @@ const DashboardPage = () => {
               💬 Chat
             </button>
             <button
-              onClick={() => setActiveTab('canvas')}
+              onClick={() => handleTabChange('canvas')}
               className={`px-3 py-2 rounded-md text-sm font-semibold transition ${
                 activeTab === 'canvas'
                   ? 'ustwo-brand-gradient text-white'
@@ -213,7 +236,7 @@ const DashboardPage = () => {
               🎨 Canvas
             </button>
             <button
-              onClick={() => setActiveTab('memories')}
+              onClick={() => handleTabChange('memories')}
               className={`px-3 py-2 rounded-md text-sm font-semibold transition ${
                 activeTab === 'memories'
                   ? 'ustwo-brand-gradient text-white'
@@ -224,7 +247,7 @@ const DashboardPage = () => {
             </button>
             <button
               onClick={() => {
-                setActiveTab('cinema');
+                handleTabChange('cinema');
                 setHasCinemaInvite(false);
               }}
               className={`px-3 py-2 rounded-md text-sm font-semibold transition relative ${
@@ -237,6 +260,16 @@ const DashboardPage = () => {
               {hasCinemaInvite && activeTab !== 'cinema' ? (
                 <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-rose-500" />
               ) : null}
+            </button>
+            <button
+              onClick={() => handleTabChange('shopping')}
+              className={`px-3 py-2 rounded-md text-sm font-semibold transition ${
+                activeTab === 'shopping'
+                  ? 'ustwo-brand-gradient text-white'
+                  : 'text-gray-700 hover:bg-pink-50'
+              }`}
+            >
+              🛍️ Shopping
             </button>
           </div>
         </div>
@@ -251,13 +284,13 @@ const DashboardPage = () => {
                 coupleId={coupleData._id}
                 partnerName={partnerName}
                 mood={mood}
-                onOpenCanvas={() => setActiveTab('canvas')}
+                onOpenCanvas={() => handleTabChange('canvas')}
               />
             ) : activeTab === 'canvas' ? (
               <SharedCanvas
                 coupleId={coupleData._id}
                 mood={mood}
-                onBackToChat={() => setActiveTab('chat')}
+                onBackToChat={() => handleTabChange('chat')}
               />
             ) : activeTab === 'cinema' ? (
               <CinemaTheater
@@ -266,6 +299,8 @@ const DashboardPage = () => {
                 coupleData={coupleData}
                 partnerName={partnerName}
               />
+            ) : activeTab === 'shopping' ? (
+              <Shopping mood={mood} />
             ) : (
               <MemoryLane
                 coupleId={coupleData._id}
