@@ -6,6 +6,8 @@ import MessageBubble from './MessageBubble';
 import TypingIndicator from './TypingIndicator';
 import InputBar from './InputBar';
 
+const toMessageId = (value) => (value ? String(value) : '');
+
 const ChatWindow = ({
   coupleId,
   partnerName,
@@ -65,30 +67,65 @@ const ChatWindow = ({
     shouldAutoScrollRef.current = distanceFromBottom < 72;
   };
 
+  const commitIncomingMessage = React.useCallback((data) => {
+    setMessages((prev) => {
+      const next = [...prev];
+      const dbId = toMessageId(data?._id);
+      const tempId = toMessageId(data?.clientTempId);
+
+      if (tempId) {
+        const optimisticIndex = next.findIndex((msg) => toMessageId(msg._id) === tempId);
+        if (optimisticIndex !== -1) {
+          next[optimisticIndex] = {
+            ...next[optimisticIndex],
+            ...data,
+            _id: data._id,
+            deliveryStatus: 'sent',
+            deliveryError: null
+          };
+
+          if (dbId) {
+            return next.filter((msg, idx) => idx === optimisticIndex || toMessageId(msg._id) !== dbId);
+          }
+
+          return next;
+        }
+      }
+
+      if (dbId) {
+        const existingIndex = next.findIndex((msg) => toMessageId(msg._id) === dbId);
+        if (existingIndex !== -1) {
+          next[existingIndex] = {
+            ...next[existingIndex],
+            ...data,
+            deliveryStatus: 'sent',
+            deliveryError: null
+          };
+          return next;
+        }
+      }
+
+      return [...next, { ...data, deliveryStatus: 'sent', deliveryError: null }];
+    });
+  }, []);
+
   // Socket event listeners
   useEffect(() => {
     if (!socket || !coupleId) return;
 
-    // Join the couple room
-    socket.emit('join-room', {
-      coupleId,
-    });
+    const joinRoom = () => {
+      socket.emit('join-room', {
+        coupleId,
+      });
+    };
+
+    // Join room now (or queued), and re-join on reconnect
+    joinRoom();
+    socket.on('connect', joinRoom);
 
     // Listen for incoming messages
     const handleReceiveMessage = (data) => {
-      setMessages((prev) => {
-        if (data.clientTempId) {
-          const tempIndex = prev.findIndex((msg) => msg._id === data.clientTempId);
-          if (tempIndex !== -1) {
-            const copy = [...prev];
-            copy[tempIndex] = { ...data };
-            return copy;
-          }
-        }
-        const alreadyExists = prev.some((msg) => msg._id?.toString() === data._id?.toString());
-        if (alreadyExists) return prev;
-        return [...prev, data];
-      });
+      commitIncomingMessage(data);
       // Mark message as read
       api.markRead(coupleId).catch(console.error);
       socket.emit('mark-read', { coupleId });
@@ -167,6 +204,7 @@ const ChatWindow = ({
     socket.emit('mark-read', { coupleId });
 
     return () => {
+      socket.off('connect', joinRoom);
       socket.off('receive-message', handleReceiveMessage);
       socket.off('partner-typing', handlePartnerTyping);
       socket.off('partner-stop-typing', handlePartnerStopTyping);
@@ -178,46 +216,83 @@ const ChatWindow = ({
       socket.off('message-deleted', handleMessageDeleted);
       socket.emit('leave-room', { coupleId });
     };
-  }, [socket, coupleId, user?.id]);
+  }, [socket, coupleId, user?.id, commitIncomingMessage]);
 
-  const handleSendMessage = (content) => {
+  const handleSendMessage = async (content, options = {}) => {
     if (!content.trim()) return;
 
     shouldAutoScrollRef.current = true;
+    const clientTempId = options.clientTempId || `temp-${Date.now()}`;
 
-    // Optimistically add message to UI
     const optimisticMessage = {
-      _id: `temp-${Date.now()}`,
+      _id: clientTempId,
       content,
+      type: 'text',
       messageType: 'text',
+      fileUrl: null,
       mediaUrl: null,
       senderId: { _id: user?.id, name: user?.name, initials: user?.initials },
       timestamp: new Date().toISOString(),
       read: true,
       reactions: [],
       edited: false,
-      deleted: false
+      deleted: false,
+      deliveryStatus: 'sending',
+      deliveryError: null
     };
 
-    setMessages((prev) => [...prev, optimisticMessage]);
+    setMessages((prev) => {
+      const existingIndex = prev.findIndex((msg) => toMessageId(msg._id) === toMessageId(clientTempId));
+      if (existingIndex !== -1) {
+        const copy = [...prev];
+        copy[existingIndex] = {
+          ...copy[existingIndex],
+          ...optimisticMessage
+        };
+        return copy;
+      }
+      return [...prev, optimisticMessage];
+    });
 
-    // Send via Socket.io
-    if (socket?.connected) {
-      socket.emit('send-message', {
-        coupleId,
-        senderName: user?.name,
-        content,
-        clientTempId: optimisticMessage._id
-      });
-    } else {
-      api.sendMessage(coupleId, content)
-        .then((res) => {
-          const saved = res.data.message;
-          setMessages((prev) =>
-            prev.map((msg) => (msg._id === optimisticMessage._id ? saved : msg))
-          );
-        })
-        .catch(console.error);
+    try {
+      // API-first send path for reliability; backend emits realtime receive-message
+      const res = await api.sendMessage(coupleId, content, clientTempId);
+      const saved = res.data.message;
+      commitIncomingMessage({ ...saved, clientTempId });
+    } catch (error) {
+      markMessageFailed(clientTempId, error?.message || 'Failed to send');
+      throw error;
+    }
+
+    return clientTempId;
+  };
+
+  const markMessageFailed = React.useCallback((clientTempId, reason) => {
+    setMessages((prev) =>
+      prev.map((msg) =>
+        toMessageId(msg._id) === toMessageId(clientTempId)
+          ? { ...msg, deliveryStatus: 'failed', deliveryError: reason || 'Failed to send' }
+          : msg
+      )
+    );
+  }, []);
+
+  const retryFailedMessage = async (message) => {
+    const retryId = toMessageId(message?._id);
+    if (!message?.content || !retryId) return;
+
+    setMessages((prev) =>
+      prev.map((msg) =>
+        toMessageId(msg._id) === retryId
+          ? { ...msg, deliveryStatus: 'sending', deliveryError: null }
+          : msg
+      )
+    );
+
+    try {
+      await handleSendMessage(message.content, { clientTempId: retryId });
+    } catch (error) {
+      markMessageFailed(retryId, error?.message || 'Retry failed');
     }
   };
 
@@ -384,16 +459,28 @@ const ChatWindow = ({
           <>
             <div className="max-w-4xl mx-auto w-full space-y-3">
               {messages.map((message) => (
-                <MessageBubble
-                  key={message._id}
-                  message={message}
-                  isOwn={(message.senderId?._id || message.senderId) === user?.id}
-                  onReact={handleReactMessage}
-                  onEdit={handleEditMessage}
-                  onDelete={handleDeleteMessage}
-                  canEdit={(message.senderId?._id || message.senderId) === user?.id}
-                  showRead={(message.senderId?._id || message.senderId) === user?.id}
-                />
+                <div key={message._id}>
+                  <MessageBubble
+                    message={message}
+                    isOwn={(message.senderId?._id || message.senderId) === user?.id}
+                    onReact={handleReactMessage}
+                    onEdit={handleEditMessage}
+                    onDelete={handleDeleteMessage}
+                    canEdit={(message.senderId?._id || message.senderId) === user?.id}
+                    showRead={(message.senderId?._id || message.senderId) === user?.id}
+                  />
+                  {(message.senderId?._id || message.senderId) === user?.id && message.deliveryStatus === 'failed' ? (
+                    <div className="flex justify-end mt-1">
+                      <button
+                        type="button"
+                        onClick={() => retryFailedMessage(message)}
+                        className="text-[11px] px-2 py-1 rounded-full bg-rose-50 text-rose-600 border border-rose-200"
+                      >
+                        Failed • Retry
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
               ))}
               {isTyping && (
                 <div className="flex justify-start">

@@ -20,7 +20,8 @@ export const useSocket = () => {
 
     // Create socket connection if not already connected
     if (!socketInstance) {
-      socketInstance = io('http://localhost:5001', {
+      const socketUrl = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5001';
+      socketInstance = io(socketUrl, {
         auth: {
           token,
         },

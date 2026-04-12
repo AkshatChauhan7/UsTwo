@@ -77,16 +77,28 @@ module.exports = (io) => {
     });
 
     // Send message
-    socket.on('send-message', async (data) => {
+    socket.on('send-message', async (data, ack = () => {}) => {
       try {
         const { coupleId, content, senderName, clientTempId } = data;
         const senderId = userId; // Get from authenticated socket
+        const normalizedContent = String(content || '').trim();
+        const safeClientTempId = clientTempId || `temp-${Date.now()}-${Math.round(Math.random() * 1e6)}`;
+
+        if (!coupleId || !normalizedContent) {
+          socket.emit('error', { msg: 'Message cannot be empty' });
+          ack({ ok: false, error: 'Message cannot be empty', clientTempId: safeClientTempId });
+          return;
+        }
 
         // Create message in DB
         const message = new Message({
           coupleId,
           senderId,
-          content,
+          content: normalizedContent,
+          type: 'text',
+          fileUrl: null,
+          messageType: 'text',
+          mediaUrl: null,
           readBy: [senderId]
         });
 
@@ -98,18 +110,25 @@ module.exports = (io) => {
           coupleId,
           senderId,
           senderName,
-          content,
+          content: message.content,
+          type: 'text',
+          fileUrl: null,
+          messageType: 'text',
+          mediaUrl: null,
           timestamp: message.timestamp,
           read: message.read,
           reactions: message.reactions,
           edited: message.edited,
           deleted: message.deleted,
-          clientTempId
+          clientTempId: safeClientTempId
         });
+
+        ack({ ok: true, messageId: String(message._id), clientTempId: safeClientTempId });
 
         console.log(`💬 Message sent in couple-${coupleId} by ${userId}`);
       } catch (error) {
         console.error('🔥 Send message error:', error);
+        ack({ ok: false, error: 'Error sending message' });
         socket.emit('error', { msg: 'Error sending message' });
       }
     });

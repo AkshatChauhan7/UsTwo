@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from "react";
 export default function InputBar({
   input,
   setInput,
-  onSend,
   onSendMessage,
   onSendMedia,
   onTyping,
@@ -28,8 +27,6 @@ export default function InputBar({
     }
   };
 
-  const sendHandler = onSend || onSendMessage;
-
   const autoResize = (e) => {
     e.target.style.height = "auto";
     const maxHeight = window.innerWidth < 640 ? 84 : 112;
@@ -52,13 +49,18 @@ export default function InputBar({
     }
   };
 
-  const handleSend = () => {
+  const handleSend = async () => {
     const message = (currentInput || "").trim();
-    if (!message || !sendHandler) return;
-    sendHandler(message);
-    updateInput("");
-    onStopTyping?.();
-    if (textareaRef.current) textareaRef.current.style.height = "auto";
+    if (!message || !onSendMessage) return;
+
+    try {
+      await Promise.resolve(onSendMessage(message));
+      updateInput("");
+      onStopTyping?.();
+      if (textareaRef.current) textareaRef.current.style.height = "auto";
+    } catch {
+      // keep current input for retry if send fails
+    }
   };
 
   const handleMediaPicked = async (event, type) => {
@@ -103,13 +105,13 @@ export default function InputBar({
               onClick={() => imageInputRef.current?.click()}
               className="text-left text-sm px-3 py-2.5 rounded-xl hover:bg-pink-50 transition min-h-[44px]"
             >
-              📷 Photo
+              � Photo
             </button>
             <button
               onClick={() => videoInputRef.current?.click()}
               className="text-left text-sm px-3 py-2.5 rounded-xl hover:bg-pink-50 transition min-h-[44px]"
             >
-              🎥 Video
+              � Video
             </button>
           </div>
         )}
