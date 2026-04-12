@@ -1,7 +1,63 @@
 const router = require('express').Router();
+const fs = require('fs');
+const path = require('path');
+const multer = require('multer');
 const Message = require('../models/Message');
 const Couple = require('../models/Couple');
 const authMiddleware = require('../middleware/authMiddleware');
+
+const chatUploadsDir = path.join(__dirname, '../uploads/chat');
+fs.mkdirSync(chatUploadsDir, { recursive: true });
+
+const IMAGE_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+const VIDEO_MIME_TYPES = ['video/mp4', 'video/quicktime', 'video/webm'];
+const MAX_FILE_BYTES = 20 * 1024 * 1024;
+
+const chatStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, chatUploadsDir),
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname || '').toLowerCase();
+    cb(null, `chat-${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`);
+  }
+});
+
+const chatUpload = multer({
+  storage: chatStorage,
+  limits: { fileSize: MAX_FILE_BYTES },
+  fileFilter: (_req, file, cb) => {
+    const allowed = [...IMAGE_MIME_TYPES, ...VIDEO_MIME_TYPES];
+    if (!allowed.includes(file.mimetype)) {
+      return cb(new Error('Only image/video uploads are allowed'));
+    }
+    return cb(null, true);
+  }
+});
+
+const chatUploadSingle = (req, res, next) => {
+  chatUpload.single('media')(req, res, (err) => {
+    if (!err) return next();
+    if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({ msg: 'Media file is too large (max 20MB)', code: 'FILE_TOO_LARGE' });
+    }
+    return res.status(400).json({ msg: err.message || 'Upload error', code: 'UPLOAD_ERROR' });
+  });
+};
+
+const removeUploadedFile = (filePath) => {
+  try {
+    if (filePath && fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+  } catch {
+    // no-op
+  }
+};
+
+const buildAbsoluteFileUrl = (req, relativePath) => {
+  if (!relativePath) return null;
+  if (relativePath.startsWith('http://') || relativePath.startsWith('https://')) return relativePath;
+  return `${req.protocol}://${req.get('host')}${relativePath.startsWith('/') ? relativePath : `/${relativePath}`}`;
+};
 
 /**
  * GET /api/chat/history/:coupleId
@@ -72,31 +128,62 @@ router.get('/history/:coupleId', authMiddleware, async (req, res) => {
  * Auth: Required
  * Body: { coupleId, content }
  */
-router.post('/send', authMiddleware, async (req, res) => {
+router.post('/send', authMiddleware, chatUploadSingle, async (req, res) => {
   try {
-    const { coupleId, content } = req.body;
+    const { coupleId, content = '', type: inputType } = req.body;
     const senderId = req.user.id; // From JWT token
+    const trimmedContent = String(content || '').trim();
+    const uploadedFile = req.file;
 
     console.log('💬 Send message in couple:', coupleId);
 
     // Validation
-    if (!coupleId || !content) {
+    if (!coupleId) {
       return res.status(400).json({
-        msg: 'Couple ID and message content are required',
+        msg: 'Couple ID is required',
         code: 'MISSING_FIELDS'
       });
     }
 
-    if (content.trim().length === 0) {
+    if (!trimmedContent && !uploadedFile) {
       return res.status(400).json({
         msg: 'Message cannot be empty',
         code: 'EMPTY_MESSAGE'
       });
     }
 
+    let messageType = inputType || 'text';
+    if (uploadedFile) {
+      messageType = IMAGE_MIME_TYPES.includes(uploadedFile.mimetype) ? 'image' : 'video';
+    }
+
+    if (!['text', 'image', 'video'].includes(messageType)) {
+      removeUploadedFile(uploadedFile?.path);
+      return res.status(400).json({
+        msg: 'Invalid message type',
+        code: 'INVALID_MESSAGE_TYPE'
+      });
+    }
+
+    if (messageType === 'text' && !trimmedContent) {
+      removeUploadedFile(uploadedFile?.path);
+      return res.status(400).json({
+        msg: 'Text message cannot be empty',
+        code: 'EMPTY_MESSAGE'
+      });
+    }
+
+    if ((messageType === 'image' || messageType === 'video') && !uploadedFile) {
+      return res.status(400).json({
+        msg: 'Media file is required',
+        code: 'MISSING_MEDIA'
+      });
+    }
+
     // Verify couple exists
     const couple = await Couple.findById(coupleId);
     if (!couple) {
+      removeUploadedFile(uploadedFile?.path);
       return res.status(404).json({
         msg: 'Couple not found',
         code: 'COUPLE_NOT_FOUND'
@@ -109,17 +196,25 @@ router.post('/send', authMiddleware, async (req, res) => {
       couple.user2Id.toString() === senderId;
 
     if (!isPartOfCouple) {
+      removeUploadedFile(uploadedFile?.path);
       return res.status(403).json({
         msg: 'You are not part of this couple',
         code: 'UNAUTHORIZED'
       });
     }
 
+    const relativeFileUrl = uploadedFile ? `/uploads/chat/${uploadedFile.filename}` : null;
+    const absoluteFileUrl = buildAbsoluteFileUrl(req, relativeFileUrl);
+
     // Create and save message
     const message = new Message({
       coupleId,
       senderId,
-      content: content.trim(),
+      content: trimmedContent,
+      type: messageType,
+      fileUrl: relativeFileUrl,
+      messageType,
+      mediaUrl: relativeFileUrl,
       readBy: [senderId]
     });
 
@@ -135,6 +230,10 @@ router.post('/send', authMiddleware, async (req, res) => {
         coupleId: message.coupleId,
         senderId: message.senderId,
         content: message.content,
+        type: message.type || message.messageType,
+        fileUrl: absoluteFileUrl || message.fileUrl || message.mediaUrl,
+        messageType: message.messageType || message.type,
+        mediaUrl: absoluteFileUrl || message.mediaUrl || message.fileUrl,
         timestamp: message.timestamp,
         read: message.read,
         readBy: message.readBy,
@@ -144,9 +243,94 @@ router.post('/send', authMiddleware, async (req, res) => {
       }
     });
   } catch (error) {
+    if (req.file?.path) {
+      removeUploadedFile(req.file.path);
+    }
     console.error('🔥 Send message error:', error.message);
     res.status(500).json({
       msg: 'Error sending message',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+router.post('/send-media', authMiddleware, chatUploadSingle, async (req, res) => {
+  try {
+    const { coupleId, content = '' } = req.body;
+    const senderId = req.user.id;
+    const uploadedFile = req.file;
+    const trimmedContent = String(content || '').trim();
+
+    if (!coupleId) {
+      return res.status(400).json({ msg: 'Couple ID is required', code: 'MISSING_FIELDS' });
+    }
+
+    if (!uploadedFile) {
+      return res.status(400).json({ msg: 'Media file is required', code: 'MISSING_MEDIA' });
+    }
+
+    const messageType = IMAGE_MIME_TYPES.includes(uploadedFile.mimetype) ? 'image' : 'video';
+    const relativeFileUrl = `/uploads/chat/${uploadedFile.filename}`;
+    const absoluteFileUrl = buildAbsoluteFileUrl(req, relativeFileUrl);
+
+    const couple = await Couple.findById(coupleId);
+    if (!couple) {
+      removeUploadedFile(uploadedFile.path);
+      return res.status(404).json({ msg: 'Couple not found', code: 'COUPLE_NOT_FOUND' });
+    }
+
+    const isPartOfCouple =
+      couple.user1Id.toString() === senderId ||
+      couple.user2Id.toString() === senderId;
+
+    if (!isPartOfCouple) {
+      removeUploadedFile(uploadedFile.path);
+      return res.status(403).json({ msg: 'You are not part of this couple', code: 'UNAUTHORIZED' });
+    }
+
+    const message = await Message.create({
+      coupleId,
+      senderId,
+      content: trimmedContent,
+      type: messageType,
+      fileUrl: relativeFileUrl,
+      messageType,
+      mediaUrl: relativeFileUrl,
+      readBy: [senderId]
+    });
+
+    await message.populate('senderId', 'name initials email profileColor _id');
+
+    const payload = {
+      _id: message._id,
+      coupleId: message.coupleId,
+      senderId: message.senderId,
+      content: message.content,
+      type: message.type,
+      fileUrl: absoluteFileUrl || message.fileUrl,
+      messageType: message.messageType,
+      mediaUrl: absoluteFileUrl || message.mediaUrl,
+      timestamp: message.timestamp,
+      read: message.read,
+      readBy: message.readBy,
+      reactions: message.reactions,
+      edited: message.edited,
+      deleted: message.deleted
+    };
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`couple-${coupleId}`).emit('receive-message', payload);
+    }
+
+    return res.status(201).json({ msg: 'Media message sent successfully', message: payload });
+  } catch (error) {
+    if (req.file?.path) {
+      removeUploadedFile(req.file.path);
+    }
+    console.error('🔥 Send media message error:', error.message);
+    return res.status(500).json({
+      msg: 'Error sending media message',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }

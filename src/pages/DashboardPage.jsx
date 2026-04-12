@@ -32,10 +32,12 @@ const DashboardPage = () => {
   const [isDiaryOpen, setIsDiaryOpen] = useState(false);
   const [hasDiaryAlert, setHasDiaryAlert] = useState(false);
   const [hasCinemaInvite, setHasCinemaInvite] = useState(false);
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const previousMoodRef = useRef('cozy');
 
   const handleTabChange = (nextTab) => {
     setActiveTab(nextTab);
+    setIsMobileNavOpen(false);
     navigate(`/dashboard/${nextTab}`);
   };
 
@@ -171,13 +173,14 @@ const DashboardPage = () => {
   };
 
   const isCinemaActive = activeTab === 'cinema';
+  const hideMobileTabs = activeTab === 'chat' && !isMobileNavOpen;
 
   return (
     <div
-  className={`h-dvh min-h-dvh overflow-hidden flex flex-col ustwo-ambient ${isCinemaActive ? 'bg-linear-to-br from-[#17131f] via-[#231b31] to-[#0f0c14]' : mood === 'night' ? 'ustwo-night' : 'bg-linear-to-br from-rose-50 via-pink-50 to-purple-50'}`}
+  className={`h-dvh min-h-dvh overflow-hidden flex flex-col ustwo-ambient ${isCinemaActive ? 'bg-linear-to-br from-[#17131f] via-[#231b31] to-[#0f0c14]' : mood === 'night' ? 'ustwo-night' : 'bg-rose-50'}`}
     >
       {/* Compact top bar */}
-      <nav className="sticky top-0 z-40 px-3 sm:px-4 pt-2 sm:pt-3">
+      <nav className="sticky top-0 z-40 px-2 sm:px-4 pt-2 sm:pt-3">
         <div className={`max-w-7xl mx-auto ustwo-glass rounded-xl px-3 sm:px-4 py-2.5 relative z-10 ${isCinemaActive ? 'opacity-85' : ''}`}>
           <div className="flex items-center justify-between gap-2 sm:gap-3">
             <div className="flex items-center gap-3 min-w-0">
@@ -216,7 +219,7 @@ const DashboardPage = () => {
           </div>
         </div>
 
-          <div className="grid grid-cols-7 gap-1 bg-white/70 rounded-lg p-1 border border-pink-100 mt-2">
+          <div className={`grid grid-cols-2 sm:grid-cols-7 gap-1 bg-white/70 rounded-lg p-1 border border-pink-100 mt-2 ${hideMobileTabs ? 'hidden sm:grid' : ''}`}>
             <button
               onClick={() => handleTabChange('chat')}
               className={`px-3 py-2 rounded-md text-sm font-semibold transition ${
@@ -298,15 +301,17 @@ const DashboardPage = () => {
       </nav>
 
       {/* Main Chat Container */}
-      <div className={`flex-1 min-h-0 overflow-hidden relative z-10 px-3 sm:px-4 pb-3 sm:pb-4 pt-1 sm:pt-2 ${isCinemaActive ? 'pt-3 sm:pt-4' : ''}`}>
+      <div className={`flex-1 min-h-0 overflow-hidden relative z-10 px-0 sm:px-4 pb-0 sm:pb-4 pt-1 sm:pt-2 ${isCinemaActive ? 'pt-3 sm:pt-4' : ''}`}>
         <div className="h-full min-h-0 flex flex-col max-w-7xl mx-auto w-full">
-          <div className="flex-1 min-h-0 overflow-hidden pt-1">
+          <div className="flex-1 min-h-0 overflow-hidden pt-0 sm:pt-1">
             {activeTab === 'chat' ? (
               <ChatWindow
                 coupleId={coupleData._id}
                 partnerName={partnerName}
                 mood={mood}
                 onOpenCanvas={() => handleTabChange('canvas')}
+                onToggleMenu={() => setIsMobileNavOpen((prev) => !prev)}
+                isMobileMenuOpen={isMobileNavOpen}
               />
             ) : activeTab === 'canvas' ? (
               <SharedCanvas

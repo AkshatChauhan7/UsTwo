@@ -1,15 +1,20 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export default function InputBar({
   input,
   setInput,
   onSend,
   onSendMessage,
+  onSendMedia,
   onTyping,
   onStopTyping,
   placeholder,
+  mediaUploading = false,
 }) {
   const textareaRef = useRef(null);
+  const imageInputRef = useRef(null);
+  const videoInputRef = useRef(null);
+  const quickActionsRef = useRef(null);
   const [localInput, setLocalInput] = useState("");
   const [showQuickActions, setShowQuickActions] = useState(false);
 
@@ -27,7 +32,8 @@ export default function InputBar({
 
   const autoResize = (e) => {
     e.target.style.height = "auto";
-    e.target.style.height = e.target.scrollHeight + "px";
+    const maxHeight = window.innerWidth < 640 ? 84 : 112;
+    e.target.style.height = `${Math.min(e.target.scrollHeight, maxHeight)}px`;
     const value = e.target.value;
     updateInput(value);
 
@@ -55,37 +61,73 @@ export default function InputBar({
     if (textareaRef.current) textareaRef.current.style.height = "auto";
   };
 
-  const addMoodToken = (token) => {
-    const next = `${currentInput || ""}${currentInput ? " " : ""}${token}`;
-    updateInput(next);
-    onTyping?.();
+  const handleMediaPicked = async (event, type) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || !onSendMedia) return;
+
+    await onSendMedia(file, type);
     setShowQuickActions(false);
   };
 
+  useEffect(() => {
+    const handleOutsideClick = (event) => {
+      if (!showQuickActions) return;
+      if (!quickActionsRef.current?.contains(event.target)) {
+        setShowQuickActions(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleOutsideClick);
+    document.addEventListener("touchstart", handleOutsideClick);
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+      document.removeEventListener("touchstart", handleOutsideClick);
+    };
+  }, [showQuickActions]);
+
   return (
-    <div className="px-2 sm:px-3 md:px-4 py-2.5 sm:py-3 border-t border-white/40 bg-white/55 backdrop-blur-xl flex items-end gap-2 flex-shrink-0 relative">
-      <div className="relative">
+    <div className="fixed md:static bottom-0 left-0 right-0 z-30 px-2 sm:px-3 md:px-4 py-2 md:py-3 border-t border-white/40 bg-white/55 backdrop-blur-xl flex items-end gap-2 flex-shrink-0 relative pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+      <div className="relative" ref={quickActionsRef}>
         <button
           onClick={() => setShowQuickActions((prev) => !prev)}
-          className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-white/90 border border-pink-100 text-gray-600 hover:bg-pink-50 transition"
+          className="w-11 h-11 rounded-full bg-white/90 border border-pink-100 text-gray-600 hover:bg-pink-50 transition text-lg min-w-[44px] min-h-[44px]"
           aria-label="More actions"
         >
           +
         </button>
 
         {showQuickActions && (
-          <div className="absolute bottom-10 sm:bottom-11 left-0 bg-white border border-pink-100 rounded-xl shadow-lg p-1.5 sm:p-2 flex items-center gap-1 z-20">
-            {['❤️', '✨', '🫶'].map((token) => (
-              <button
-                key={token}
-                onClick={() => addMoodToken(token)}
-                className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-white/90 border border-pink-100 hover:bg-pink-50 transition"
-              >
-                {token}
-              </button>
-            ))}
+          <div className="absolute bottom-14 left-0 bg-white/95 backdrop-blur-md border border-pink-100 rounded-2xl shadow-lg p-2.5 flex flex-col gap-1.5 z-30 min-w-[150px]">
+            <button
+              onClick={() => imageInputRef.current?.click()}
+              className="text-left text-sm px-3 py-2.5 rounded-xl hover:bg-pink-50 transition min-h-[44px]"
+            >
+              📷 Photo
+            </button>
+            <button
+              onClick={() => videoInputRef.current?.click()}
+              className="text-left text-sm px-3 py-2.5 rounded-xl hover:bg-pink-50 transition min-h-[44px]"
+            >
+              🎥 Video
+            </button>
           </div>
         )}
+
+        <input
+          ref={imageInputRef}
+          type="file"
+          accept="image/*,video/*"
+          className="hidden"
+          onChange={(e) => handleMediaPicked(e, "image")}
+        />
+        <input
+          ref={videoInputRef}
+          type="file"
+          accept="image/*,video/*"
+          className="hidden"
+          onChange={(e) => handleMediaPicked(e, "video")}
+        />
       </div>
 
       {/* Textarea */}
@@ -97,7 +139,7 @@ export default function InputBar({
           onChange={autoResize}
           onKeyDown={handleKey}
           placeholder={placeholder || "Write something sweet…"}
-          className="flex-1 bg-transparent text-sm text-stone-700 placeholder-stone-400 outline-none resize-none max-h-28 leading-relaxed"
+          className="flex-1 bg-transparent text-sm text-stone-700 placeholder-stone-400 outline-none resize-none max-h-[84px] sm:max-h-28 leading-relaxed"
           style={{ scrollbarWidth: "none" }}
         />
       </div>
@@ -105,14 +147,18 @@ export default function InputBar({
       {/* Send */}
       <button
         onClick={handleSend}
-        disabled={!(currentInput || "").trim()}
+        disabled={mediaUploading || !(currentInput || "").trim()}
         aria-label="Send message"
-        className="w-10 h-10 sm:w-11 sm:h-11 rounded-full ustwo-brand-gradient flex items-center justify-center hover:scale-105 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0 shadow-[0_10px_22px_rgba(171,88,141,0.35)]"
+        className="w-11 h-11 rounded-full ustwo-brand-gradient flex items-center justify-center hover:scale-105 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0 shadow-[0_10px_22px_rgba(171,88,141,0.35)] min-w-[44px] min-h-[44px]"
       >
-        <svg className="w-4 h-4 stroke-white fill-none stroke-2 translate-x-0.5" viewBox="0 0 24 24">
-          <line x1="22" y1="2" x2="11" y2="13" />
-          <polygon points="22 2 15 22 11 13 2 9 22 2" />
-        </svg>
+        {mediaUploading ? (
+          <span className="inline-block h-4 w-4 rounded-full border-2 border-white/70 border-t-transparent animate-spin" />
+        ) : (
+          <svg className="w-4 h-4 stroke-white fill-none stroke-2 translate-x-0.5" viewBox="0 0 24 24">
+            <line x1="22" y1="2" x2="11" y2="13" />
+            <polygon points="22 2 15 22 11 13 2 9 22 2" />
+          </svg>
+        )}
       </button>
     </div>
   );
