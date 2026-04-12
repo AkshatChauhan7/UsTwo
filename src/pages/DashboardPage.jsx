@@ -11,8 +11,9 @@ import DiaryBook from '../components/DiaryBook';
 import CinemaTheater from '../components/CinemaTheater';
 import Shopping from '../components/Shopping';
 import SharedBucketList from '../components/SharedBucketList';
+import TicTacToe from '../components/TicTacToe';
 
-const validTabs = ['chat', 'canvas', 'memories', 'cinema', 'shopping', 'bucketlist'];
+const validTabs = ['chat', 'canvas', 'memories', 'cinema', 'shopping', 'bucketlist', 'games'];
 
 const getTabFromPath = (pathname) => {
   const tab = pathname?.split('/')[2];
@@ -215,7 +216,7 @@ const DashboardPage = () => {
           </div>
         </div>
 
-          <div className="grid grid-cols-6 gap-1 bg-white/70 rounded-lg p-1 border border-pink-100 mt-2">
+          <div className="grid grid-cols-7 gap-1 bg-white/70 rounded-lg p-1 border border-pink-100 mt-2">
             <button
               onClick={() => handleTabChange('chat')}
               className={`px-3 py-2 rounded-md text-sm font-semibold transition ${
@@ -224,7 +225,7 @@ const DashboardPage = () => {
                   : 'text-gray-700 hover:bg-pink-50'
               }`}
             >
-              💬 Chat
+              Chat
             </button>
             <button
               onClick={() => handleTabChange('canvas')}
@@ -234,7 +235,7 @@ const DashboardPage = () => {
                   : 'text-gray-700 hover:bg-pink-50'
               }`}
             >
-              🎨 Canvas
+              Canvas
             </button>
             <button
               onClick={() => handleTabChange('memories')}
@@ -244,7 +245,7 @@ const DashboardPage = () => {
                   : 'text-gray-700 hover:bg-pink-50'
               }`}
             >
-              📸 Memories
+              Memories
             </button>
             <button
               onClick={() => {
@@ -257,7 +258,7 @@ const DashboardPage = () => {
                   : 'text-gray-700 hover:bg-pink-50'
               } ${hasCinemaInvite && activeTab !== 'cinema' ? 'animate-heartbeat' : ''}`}
             >
-              🍿 Cinema
+              Cinema
               {hasCinemaInvite && activeTab !== 'cinema' ? (
                 <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-rose-500" />
               ) : null}
@@ -270,7 +271,7 @@ const DashboardPage = () => {
                   : 'text-gray-700 hover:bg-pink-50'
               }`}
             >
-              🛍️ Shopping
+              Shopping
             </button>
             <button
               onClick={() => handleTabChange('bucketlist')}
@@ -280,7 +281,17 @@ const DashboardPage = () => {
                   : 'text-gray-700 hover:bg-pink-50'
               }`}
             >
-              🎯 Bucket
+              Bucket
+            </button>
+            <button
+              onClick={() => handleTabChange('games')}
+              className={`px-3 py-2 rounded-md text-sm font-semibold transition ${
+                activeTab === 'games'
+                  ? 'ustwo-brand-gradient text-white'
+                  : 'text-gray-700 hover:bg-pink-50'
+              }`}
+            >
+              Games
             </button>
           </div>
         </div>
@@ -317,6 +328,12 @@ const DashboardPage = () => {
                 coupleId={coupleData._id}
                 mood={mood}
                 partnerName={partnerName}
+              />
+            ) : activeTab === 'games' ? (
+              <TicTacToe
+                coupleId={coupleData._id}
+                user={user}
+                coupleData={coupleData}
               />
             ) : (
               <MemoryLane
