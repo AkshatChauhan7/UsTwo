@@ -5,9 +5,6 @@ const DiaryEntry = require('../models/DiaryEntry');
 const CinemaState = require('../models/CinemaState');
 const BucketListItem = require('../models/BucketListItem');
 
-// Transient in-memory Tic-Tac-Toe state per couple (no DB persistence)
-const tictactoeStateByCouple = new Map();
-
 const getDateRange = (dateInput) => {
   const base = dateInput ? new Date(dateInput) : new Date();
   const start = new Date(base);
@@ -60,11 +57,6 @@ module.exports = (io) => {
 
         await updateCouplePresence(coupleId);
 
-        const tictactoeState = tictactoeStateByCouple.get(String(coupleId));
-        if (tictactoeState) {
-          socket.emit('tictactoe-update', tictactoeState);
-        }
-
         // Notify partner that user is online
         socket.to(`couple-${coupleId}`).emit('partner-online', {
           userId,
@@ -77,28 +69,16 @@ module.exports = (io) => {
     });
 
     // Send message
-    socket.on('send-message', async (data, ack = () => {}) => {
+    socket.on('send-message', async (data) => {
       try {
         const { coupleId, content, senderName, clientTempId } = data;
         const senderId = userId; // Get from authenticated socket
-        const normalizedContent = String(content || '').trim();
-        const safeClientTempId = clientTempId || `temp-${Date.now()}-${Math.round(Math.random() * 1e6)}`;
-
-        if (!coupleId || !normalizedContent) {
-          socket.emit('error', { msg: 'Message cannot be empty' });
-          ack({ ok: false, error: 'Message cannot be empty', clientTempId: safeClientTempId });
-          return;
-        }
 
         // Create message in DB
         const message = new Message({
           coupleId,
           senderId,
-          content: normalizedContent,
-          type: 'text',
-          fileUrl: null,
-          messageType: 'text',
-          mediaUrl: null,
+          content,
           readBy: [senderId]
         });
 
@@ -110,25 +90,18 @@ module.exports = (io) => {
           coupleId,
           senderId,
           senderName,
-          content: message.content,
-          type: 'text',
-          fileUrl: null,
-          messageType: 'text',
-          mediaUrl: null,
+          content,
           timestamp: message.timestamp,
           read: message.read,
           reactions: message.reactions,
           edited: message.edited,
           deleted: message.deleted,
-          clientTempId: safeClientTempId
+          clientTempId
         });
-
-        ack({ ok: true, messageId: String(message._id), clientTempId: safeClientTempId });
 
         console.log(`💬 Message sent in couple-${coupleId} by ${userId}`);
       } catch (error) {
         console.error('🔥 Send message error:', error);
-        ack({ ok: false, error: 'Error sending message' });
         socket.emit('error', { msg: 'Error sending message' });
       }
     });
@@ -284,51 +257,6 @@ module.exports = (io) => {
         userId,
         timestamp: new Date()
       });
-    });
-
-    // Bucket List - dual approval toggle
-    socket.on('toggle-bucket-item', async (data) => {
-      try {
-        const { itemId } = data || {};
-        if (!itemId) return;
-
-        const item = await BucketListItem.findById(itemId);
-        if (!item) return;
-
-        const couple = await Couple.findById(item.coupleId);
-        if (!couple) return;
-
-        const isPartOfCouple =
-          couple.user1Id.toString() === userId ||
-          couple.user2Id.toString() === userId;
-        if (!isPartOfCouple) return;
-
-        const alreadyChecked = item.checks.some((id) => id.toString() === userId);
-
-        if (alreadyChecked) {
-          item.checks = item.checks.filter((id) => id.toString() !== userId);
-        } else {
-          item.checks.push(userId);
-        }
-
-        item.status = BucketListItem.deriveStatus(item.checks);
-        item.updatedAt = new Date();
-        await item.save();
-
-        io.to(`couple-${item.coupleId}`).emit('bucket-item-updated', {
-          _id: item._id,
-          coupleId: item.coupleId,
-          title: item.title,
-          description: item.description,
-          createdBy: item.createdBy,
-          checks: item.checks,
-          status: item.status,
-          createdAt: item.createdAt,
-          updatedAt: item.updatedAt
-        });
-      } catch (error) {
-        console.error('🔥 Toggle bucket item socket error:', error);
-      }
     });
 
     // Canvas - Draw stroke
@@ -633,6 +561,44 @@ module.exports = (io) => {
         });
       } catch (error) {
         console.error('🔥 Add diary comment socket error:', error);
+      }
+    });
+
+    // Bucket List - Toggle check status
+    socket.on('toggle-bucket-item', async (data) => {
+      try {
+        const { coupleId, itemId, userId: payloadUserId } = data || {};
+        if (!coupleId || !itemId) return;
+
+        if (payloadUserId && payloadUserId.toString() !== userId?.toString()) return;
+
+        const couple = await Couple.findById(coupleId);
+        if (!couple) return;
+
+        const isPartOfCouple =
+          couple.user1Id.toString() === userId ||
+          couple.user2Id.toString() === userId;
+        if (!isPartOfCouple) return;
+
+        const item = await BucketListItem.findById(itemId);
+        if (!item) return;
+
+        if (item.coupleId?.toString() !== coupleId.toString()) return;
+
+        const existingIndex = item.checks.findIndex((id) => id?.toString() === userId.toString());
+        if (existingIndex >= 0) {
+          item.checks.splice(existingIndex, 1);
+        } else {
+          item.checks.push(userId);
+        }
+
+        item.status = BucketListItem.deriveStatus(item.checks);
+        item.updatedAt = new Date();
+        await item.save();
+
+        io.to(`couple-${coupleId}`).emit('bucket-item-updated', item.toObject());
+      } catch (error) {
+        console.error('🔥 Toggle bucket item socket error:', error);
       }
     });
 
@@ -1020,77 +986,19 @@ module.exports = (io) => {
       }
     });
 
-    // Cinema v2 - WebRTC signaling relay (offer / answer / ice-candidate)
-    const handleCinemaSignal = async (data) => {
+    // Cinema v2 - WebRTC signal relay for reaction bubbles
+    socket.on('CINEMA_SIGNAL', async (data) => {
       try {
-        const { coupleId, targetUserId, callerId, signalData, signal } = data || {};
-        const normalizedSignal = signalData || signal;
-        if (!coupleId || !normalizedSignal) return;
+        const { coupleId, signal } = data;
+        if (!signal) return;
 
-        const roomName = `couple-${coupleId}`;
-        io.to(roomName).emit('CINEMA_SIGNAL', {
+        socket.to(`couple-${coupleId}`).emit('CINEMA_SIGNAL', {
           coupleId,
-          targetUserId: targetUserId || null,
-          callerId: callerId || userId,
-          signalData: normalizedSignal
+          fromUserId: userId,
+          signal
         });
       } catch (error) {
         console.error('🔥 CINEMA_SIGNAL socket error:', error);
-      }
-    };
-
-    socket.on('CINEMA_SIGNAL', handleCinemaSignal);
-    socket.on('webrtc-signal', handleCinemaSignal);
-
-    // Tic-Tac-Toe - sync move state in couple room
-    socket.on('tictactoe-move', async (payload) => {
-      try {
-        const { coupleId, board, nextTurn, winner } = payload || {};
-        if (!coupleId || !Array.isArray(board) || board.length !== 9) return;
-
-        const state = {
-          coupleId,
-          board,
-          nextTurn: nextTurn || null,
-          winner: winner || null,
-          updatedAt: Date.now()
-        };
-        tictactoeStateByCouple.set(String(coupleId), state);
-
-        io.to(`couple-${coupleId}`).emit('tictactoe-update', {
-          ...state
-        });
-      } catch (error) {
-        console.error('🔥 tictactoe-move socket error:', error);
-      }
-    });
-
-    // Tic-Tac-Toe - get latest transient board state when (re)joining
-    socket.on('tictactoe-sync-request', async (payload) => {
-      try {
-        const { coupleId } = payload || {};
-        if (!coupleId) return;
-
-        const state = tictactoeStateByCouple.get(String(coupleId));
-        if (!state) return;
-
-        socket.emit('tictactoe-update', state);
-      } catch (error) {
-        console.error('🔥 tictactoe-sync-request socket error:', error);
-      }
-    });
-
-    // Tic-Tac-Toe - restart board for both users
-    socket.on('tictactoe-restart', async (payload) => {
-      try {
-        const { coupleId } = payload || {};
-        if (!coupleId) return;
-
-        tictactoeStateByCouple.delete(String(coupleId));
-
-        io.to(`couple-${coupleId}`).emit('tictactoe-reset', { coupleId });
-      } catch (error) {
-        console.error('🔥 tictactoe-restart socket error:', error);
       }
     });
   });

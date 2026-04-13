@@ -88,19 +88,26 @@ const DiaryBook = ({ isOpen, onOpen, onClose, coupleId, coupleData, user, hasAle
       const payloadDate = getDateKey(payload?.date || dateKey);
       if (payloadDate !== dateKey) return;
 
-      if (payload?.updatedBy?.toString() === user?.id?.toString()) {
-        return;
-      }
+      setEntry((prev) => {
+        const next = {
+          ...prev,
+          leftContent: payload.updatedSide === 'left'
+            ? (payload.leftContent ?? prev.leftContent)
+            : prev.leftContent,
+          rightContent: payload.updatedSide === 'right'
+            ? (payload.rightContent ?? prev.rightContent)
+            : prev.rightContent
+        };
 
-      setEntry((prev) => ({
-        ...prev,
-        leftContent: payload.updatedSide === 'left'
-          ? (payload.leftContent ?? prev.leftContent)
-          : prev.leftContent,
-        rightContent: payload.updatedSide === 'right'
-          ? (payload.rightContent ?? prev.rightContent)
-          : prev.rightContent
-      }));
+        const isSameUser = payload?.updatedBy?.toString() === user?.id?.toString();
+        const isSameContent = next.leftContent === prev.leftContent && next.rightContent === prev.rightContent;
+
+        if (isSameUser && isSameContent) {
+          return prev;
+        }
+
+        return next;
+      });
     };
 
     const handleCommentAdded = (payload) => {

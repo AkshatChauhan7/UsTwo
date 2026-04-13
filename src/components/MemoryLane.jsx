@@ -198,7 +198,7 @@ const MemoryLane = ({ coupleId, mood = 'cozy' }) => {
             onChange={(e) => setForm((prev) => ({ ...prev, caption: e.target.value }))}
             className="sm:col-span-4 px-3 py-2 rounded-lg border border-rose-200/70 bg-white/80"
             required
-            maxLength={180}
+            maxLength={180} 
           />
           <input
             type="date"

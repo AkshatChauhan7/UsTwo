@@ -6,23 +6,13 @@ import MessageBubble from './MessageBubble';
 import TypingIndicator from './TypingIndicator';
 import InputBar from './InputBar';
 
-const toMessageId = (value) => (value ? String(value) : '');
-
-const ChatWindow = ({
-  coupleId,
-  partnerName,
-  mood = 'cozy',
-  onOpenCanvas,
-  onToggleMenu,
-  isMobileMenuOpen = false
-}) => {
+const ChatWindow = ({ coupleId, partnerName, mood = 'cozy', onOpenCanvas }) => {
   const { user } = useAuth();
   const socket = useSocket();
   const [messages, setMessages] = useState([]);
   const [isTyping, setIsTyping] = useState(false);
   const [isPartnerOnline, setIsPartnerOnline] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
-  const [isMediaUploading, setIsMediaUploading] = useState(false);
   const messagesContainerRef = useRef(null);
   const shouldAutoScrollRef = useRef(true);
 
@@ -67,65 +57,30 @@ const ChatWindow = ({
     shouldAutoScrollRef.current = distanceFromBottom < 72;
   };
 
-  const commitIncomingMessage = React.useCallback((data) => {
-    setMessages((prev) => {
-      const next = [...prev];
-      const dbId = toMessageId(data?._id);
-      const tempId = toMessageId(data?.clientTempId);
-
-      if (tempId) {
-        const optimisticIndex = next.findIndex((msg) => toMessageId(msg._id) === tempId);
-        if (optimisticIndex !== -1) {
-          next[optimisticIndex] = {
-            ...next[optimisticIndex],
-            ...data,
-            _id: data._id,
-            deliveryStatus: 'sent',
-            deliveryError: null
-          };
-
-          if (dbId) {
-            return next.filter((msg, idx) => idx === optimisticIndex || toMessageId(msg._id) !== dbId);
-          }
-
-          return next;
-        }
-      }
-
-      if (dbId) {
-        const existingIndex = next.findIndex((msg) => toMessageId(msg._id) === dbId);
-        if (existingIndex !== -1) {
-          next[existingIndex] = {
-            ...next[existingIndex],
-            ...data,
-            deliveryStatus: 'sent',
-            deliveryError: null
-          };
-          return next;
-        }
-      }
-
-      return [...next, { ...data, deliveryStatus: 'sent', deliveryError: null }];
-    });
-  }, []);
-
   // Socket event listeners
   useEffect(() => {
     if (!socket || !coupleId) return;
 
-    const joinRoom = () => {
-      socket.emit('join-room', {
-        coupleId,
-      });
-    };
-
-    // Join room now (or queued), and re-join on reconnect
-    joinRoom();
-    socket.on('connect', joinRoom);
+    // Join the couple room
+    socket.emit('join-room', {
+      coupleId,
+    });
 
     // Listen for incoming messages
     const handleReceiveMessage = (data) => {
-      commitIncomingMessage(data);
+      setMessages((prev) => {
+        if (data.clientTempId) {
+          const tempIndex = prev.findIndex((msg) => msg._id === data.clientTempId);
+          if (tempIndex !== -1) {
+            const copy = [...prev];
+            copy[tempIndex] = { ...data };
+            return copy;
+          }
+        }
+        const alreadyExists = prev.some((msg) => msg._id?.toString() === data._id?.toString());
+        if (alreadyExists) return prev;
+        return [...prev, data];
+      });
       // Mark message as read
       api.markRead(coupleId).catch(console.error);
       socket.emit('mark-read', { coupleId });
@@ -204,7 +159,6 @@ const ChatWindow = ({
     socket.emit('mark-read', { coupleId });
 
     return () => {
-      socket.off('connect', joinRoom);
       socket.off('receive-message', handleReceiveMessage);
       socket.off('partner-typing', handlePartnerTyping);
       socket.off('partner-stop-typing', handlePartnerStopTyping);
@@ -216,98 +170,44 @@ const ChatWindow = ({
       socket.off('message-deleted', handleMessageDeleted);
       socket.emit('leave-room', { coupleId });
     };
-  }, [socket, coupleId, user?.id, commitIncomingMessage]);
+  }, [socket, coupleId, user?.id]);
 
-  const handleSendMessage = async (content, options = {}) => {
+  const handleSendMessage = (content) => {
     if (!content.trim()) return;
 
     shouldAutoScrollRef.current = true;
-    const clientTempId = options.clientTempId || `temp-${Date.now()}`;
 
+    // Optimistically add message to UI
     const optimisticMessage = {
-      _id: clientTempId,
+      _id: `temp-${Date.now()}`,
       content,
-      type: 'text',
-      messageType: 'text',
-      fileUrl: null,
-      mediaUrl: null,
       senderId: { _id: user?.id, name: user?.name, initials: user?.initials },
       timestamp: new Date().toISOString(),
       read: true,
       reactions: [],
       edited: false,
-      deleted: false,
-      deliveryStatus: 'sending',
-      deliveryError: null
+      deleted: false
     };
 
-    setMessages((prev) => {
-      const existingIndex = prev.findIndex((msg) => toMessageId(msg._id) === toMessageId(clientTempId));
-      if (existingIndex !== -1) {
-        const copy = [...prev];
-        copy[existingIndex] = {
-          ...copy[existingIndex],
-          ...optimisticMessage
-        };
-        return copy;
-      }
-      return [...prev, optimisticMessage];
-    });
+    setMessages((prev) => [...prev, optimisticMessage]);
 
-    try {
-      // API-first send path for reliability; backend emits realtime receive-message
-      const res = await api.sendMessage(coupleId, content, clientTempId);
-      const saved = res.data.message;
-      commitIncomingMessage({ ...saved, clientTempId });
-    } catch (error) {
-      markMessageFailed(clientTempId, error?.message || 'Failed to send');
-      throw error;
-    }
-
-    return clientTempId;
-  };
-
-  const markMessageFailed = React.useCallback((clientTempId, reason) => {
-    setMessages((prev) =>
-      prev.map((msg) =>
-        toMessageId(msg._id) === toMessageId(clientTempId)
-          ? { ...msg, deliveryStatus: 'failed', deliveryError: reason || 'Failed to send' }
-          : msg
-      )
-    );
-  }, []);
-
-  const retryFailedMessage = async (message) => {
-    const retryId = toMessageId(message?._id);
-    if (!message?.content || !retryId) return;
-
-    setMessages((prev) =>
-      prev.map((msg) =>
-        toMessageId(msg._id) === retryId
-          ? { ...msg, deliveryStatus: 'sending', deliveryError: null }
-          : msg
-      )
-    );
-
-    try {
-      await handleSendMessage(message.content, { clientTempId: retryId });
-    } catch (error) {
-      markMessageFailed(retryId, error?.message || 'Retry failed');
-    }
-  };
-
-  const handleSendMedia = async (file, mediaType) => {
-    if (!coupleId || !file) return;
-    setIsMediaUploading(true);
-    try {
-      await api.sendMediaMessage(coupleId, file, mediaType);
-      shouldAutoScrollRef.current = true;
-    } catch (error) {
-      console.error('Failed to upload media message:', error);
-      const reason = error?.response?.data?.error || error?.response?.data?.msg || 'Upload failed';
-      window.alert(reason);
-    } finally {
-      setIsMediaUploading(false);
+    // Send via Socket.io
+    if (socket?.connected) {
+      socket.emit('send-message', {
+        coupleId,
+        senderName: user?.name,
+        content,
+        clientTempId: optimisticMessage._id
+      });
+    } else {
+      api.sendMessage(coupleId, content)
+        .then((res) => {
+          const saved = res.data.message;
+          setMessages((prev) =>
+            prev.map((msg) => (msg._id === optimisticMessage._id ? saved : msg))
+          );
+        })
+        .catch(console.error);
     }
   };
 
@@ -392,36 +292,18 @@ const ChatWindow = ({
 
   return (
     <div
-      className={`relative flex flex-col h-full min-h-0 rounded-none sm:rounded-2xl border overflow-hidden ustwo-soft-shadow ${
+      className={`flex flex-col h-full min-h-0 rounded-2xl border overflow-hidden ustwo-soft-shadow ${
         mood === 'night'
           ? 'bg-[#1f172a] border-[#3a2d4c]'
-          : 'bg-rose-50 border-pink-100'
+          : 'bg-gradient-to-br from-rose-50/90 via-pink-50/90 to-purple-50/90 border-pink-100'
       }`}
     >
       {/* Chat Header */}
-      <div className={`px-2.5 sm:px-5 py-3 sm:py-4 border-b ${mood === 'night' ? 'border-[#3a2d4c] bg-white/5' : 'border-pink-200 bg-white/70'} backdrop-blur-xl`}>
+      <div className={`px-4 sm:px-5 py-3 sm:py-4 border-b ${mood === 'night' ? 'border-[#3a2d4c] bg-white/5' : 'border-pink-200 bg-white/70'} backdrop-blur-xl`}>
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
-          <div className="min-w-0 flex items-start gap-2">
-            <button
-              type="button"
-              onClick={onToggleMenu}
-              className="md:hidden min-w-[44px] min-h-[44px] rounded-full border border-pink-100 bg-white/80 text-gray-600 flex items-center justify-center"
-              aria-label={isMobileMenuOpen ? 'Back' : 'Menu'}
-            >
-              {isMobileMenuOpen ? (
-                <svg className="w-5 h-5 stroke-current fill-none stroke-2" viewBox="0 0 24 24">
-                  <path d="M15 18l-6-6 6-6" />
-                </svg>
-              ) : (
-                <svg className="w-5 h-5 stroke-current fill-none stroke-2" viewBox="0 0 24 24">
-                  <path d="M3 6h18M3 12h18M3 18h18" />
-                </svg>
-              )}
-            </button>
-            <div className="min-w-0">
-              <h2 className={`text-lg sm:text-xl font-semibold truncate ${mood === 'night' ? 'text-white' : 'text-gray-800'}`}>{partnerName}</h2>
-              <p className={`text-xs ${mood === 'night' ? 'text-gray-300' : 'text-gray-500'}`}>This space belongs only to us</p>
-            </div>
+          <div className="min-w-0">
+            <h2 className={`text-lg sm:text-xl font-semibold truncate ${mood === 'night' ? 'text-white' : 'text-gray-800'}`}>{partnerName}</h2>
+            <p className={`text-xs ${mood === 'night' ? 'text-gray-300' : 'text-gray-500'}`}>This space belongs only to us</p>
           </div>
           <div className="flex items-center gap-2 self-start sm:self-auto">
             <button
@@ -448,39 +330,27 @@ const ChatWindow = ({
       <div
         ref={messagesContainerRef}
         onScroll={handleMessagesScroll}
-        className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain px-2 sm:px-4 md:px-5 py-3 sm:py-4 pb-28 md:pb-4"
+        className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain px-3 sm:px-4 md:px-5 py-3 sm:py-4"
       >
         {messages.length === 0 ? (
-          <div className={`flex flex-col items-center justify-center h-full text-center px-4 ${mood === 'night' ? 'text-gray-300' : 'text-gray-500'}`}>
-            <span className="text-3xl sm:text-4xl mb-3 animate-float-soft">💕</span>
-            <p className="text-sm sm:text-base">Start your conversation with {partnerName}!</p>
+          <div className={`flex flex-col items-center justify-center h-full ${mood === 'night' ? 'text-gray-300' : 'text-gray-500'}`}>
+            <span className="text-4xl mb-4 animate-float-soft">💕</span>
+            <p>Start your conversation with {partnerName}!</p>
           </div>
         ) : (
           <>
             <div className="max-w-4xl mx-auto w-full space-y-3">
               {messages.map((message) => (
-                <div key={message._id}>
-                  <MessageBubble
-                    message={message}
-                    isOwn={(message.senderId?._id || message.senderId) === user?.id}
-                    onReact={handleReactMessage}
-                    onEdit={handleEditMessage}
-                    onDelete={handleDeleteMessage}
-                    canEdit={(message.senderId?._id || message.senderId) === user?.id}
-                    showRead={(message.senderId?._id || message.senderId) === user?.id}
-                  />
-                  {(message.senderId?._id || message.senderId) === user?.id && message.deliveryStatus === 'failed' ? (
-                    <div className="flex justify-end mt-1">
-                      <button
-                        type="button"
-                        onClick={() => retryFailedMessage(message)}
-                        className="text-[11px] px-2 py-1 rounded-full bg-rose-50 text-rose-600 border border-rose-200"
-                      >
-                        Failed • Retry
-                      </button>
-                    </div>
-                  ) : null}
-                </div>
+                <MessageBubble
+                  key={message._id}
+                  message={message}
+                  isOwn={(message.senderId?._id || message.senderId) === user?.id}
+                  onReact={handleReactMessage}
+                  onEdit={handleEditMessage}
+                  onDelete={handleDeleteMessage}
+                  canEdit={(message.senderId?._id || message.senderId) === user?.id}
+                  showRead={(message.senderId?._id || message.senderId) === user?.id}
+                />
               ))}
               {isTyping && (
                 <div className="flex justify-start">
@@ -495,10 +365,8 @@ const ChatWindow = ({
       {/* Input Area */}
       <InputBar
         onSendMessage={handleSendMessage}
-        onSendMedia={handleSendMedia}
         onTyping={handleTyping}
         onStopTyping={handleStopTyping}
-        mediaUploading={isMediaUploading}
         placeholder={`Message ${partnerName}...`}
       />
     </div>
