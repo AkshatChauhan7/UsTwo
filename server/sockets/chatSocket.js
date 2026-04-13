@@ -567,12 +567,13 @@ module.exports = (io) => {
     // Bucket List - Toggle check status
     socket.on('toggle-bucket-item', async (data) => {
       try {
-        const { coupleId, itemId, userId: payloadUserId } = data || {};
-        if (!coupleId || !itemId) return;
+        const { itemId } = data || {};
+        if (!itemId) return;
 
-        if (payloadUserId && payloadUserId.toString() !== userId?.toString()) return;
+        const item = await BucketListItem.findById(itemId);
+        if (!item) return;
 
-        const couple = await Couple.findById(coupleId);
+        const couple = await Couple.findById(item.coupleId);
         if (!couple) return;
 
         const isPartOfCouple =
@@ -580,14 +581,10 @@ module.exports = (io) => {
           couple.user2Id.toString() === userId;
         if (!isPartOfCouple) return;
 
-        const item = await BucketListItem.findById(itemId);
-        if (!item) return;
+        const alreadyChecked = item.checks.some((id) => id.toString() === userId);
 
-        if (item.coupleId?.toString() !== coupleId.toString()) return;
-
-        const existingIndex = item.checks.findIndex((id) => id?.toString() === userId.toString());
-        if (existingIndex >= 0) {
-          item.checks.splice(existingIndex, 1);
+        if (alreadyChecked) {
+          item.checks = item.checks.filter((id) => id.toString() !== userId);
         } else {
           item.checks.push(userId);
         }
@@ -596,7 +593,17 @@ module.exports = (io) => {
         item.updatedAt = new Date();
         await item.save();
 
-        io.to(`couple-${coupleId}`).emit('bucket-item-updated', item.toObject());
+        io.to(`couple-${item.coupleId}`).emit('bucket-item-updated', {
+          _id: item._id,
+          coupleId: item.coupleId,
+          title: item.title,
+          description: item.description,
+          createdBy: item.createdBy,
+          checks: item.checks,
+          status: item.status,
+          createdAt: item.createdAt,
+          updatedAt: item.updatedAt
+        });
       } catch (error) {
         console.error('🔥 Toggle bucket item socket error:', error);
       }
@@ -999,6 +1006,34 @@ module.exports = (io) => {
         });
       } catch (error) {
         console.error('🔥 CINEMA_SIGNAL socket error:', error);
+      }
+    });
+
+    // Cinema v2 - WebRTC signal relay for watch-party video call
+    // Expected payload from client:
+    // { coupleId, targetUserId, callerId, signalData }
+    socket.on('webrtc-signal', async (data) => {
+      try {
+        const { coupleId, targetUserId = null, callerId = userId, signalData } = data || {};
+        if (!coupleId || !signalData) return;
+
+        const couple = await Couple.findById(coupleId).lean();
+        if (!couple) return;
+
+        const isPartOfCouple =
+          couple.user1Id?.toString() === userId ||
+          couple.user2Id?.toString() === userId;
+        if (!isPartOfCouple) return;
+
+        io.to(`couple-${coupleId}`).emit('webrtc-signal', {
+          coupleId,
+          targetUserId,
+          callerId,
+          signalData,
+          timestamp: new Date()
+        });
+      } catch (error) {
+        console.error('🔥 webrtc-signal socket error:', error);
       }
     });
   });

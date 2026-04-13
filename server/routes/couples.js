@@ -1,6 +1,12 @@
 const router = require('express').Router();
 const User = require('../models/User');
 const Couple = require('../models/Couple');
+const Message = require('../models/Message');
+const CanvasState = require('../models/CanvasState');
+const Memory = require('../models/Memory');
+const DiaryEntry = require('../models/DiaryEntry');
+const CinemaState = require('../models/CinemaState');
+const BucketListItem = require('../models/BucketListItem');
 const authMiddleware = require('../middleware/authMiddleware');
 
 /**
@@ -203,6 +209,7 @@ router.get('/my-couple', authMiddleware, async (req, res) => {
         _id: couple._id,
         user1: couple.user1Id,
         user2: couple.user2Id,
+        disconnectRequestedBy: couple.disconnectRequestedBy,
         status: couple.status,
         isActive: couple.isActive,
         createdAt: couple.createdAt,
@@ -244,6 +251,7 @@ router.get('/info/:coupleId', authMiddleware, async (req, res) => {
         _id: couple._id,
         user1: couple.user1Id,
         user2: couple.user2Id,
+        disconnectRequestedBy: couple.disconnectRequestedBy,
         status: couple.status,
         isActive: couple.isActive,
         createdAt: couple.createdAt,
@@ -297,6 +305,94 @@ router.delete('/disconnect', authMiddleware, async (req, res) => {
     console.error('🔥 Disconnect error:', error.message);
     res.status(500).json({
       msg: 'Error disconnecting from partner',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+/**
+ * POST /api/couples/disconnect-request
+ * Mutual digital shredder flow
+ * Auth: Required
+ * Body (optional): { action: 'reject' }
+ */
+router.post('/disconnect-request', authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { action } = req.body || {};
+
+    const couple = await Couple.findOne({
+      $or: [{ user1Id: userId }, { user2Id: userId }]
+    });
+
+    if (!couple) {
+      return res.status(404).json({
+        msg: 'No couple connection found',
+        code: 'NO_COUPLE'
+      });
+    }
+
+    const requesterId = couple.disconnectRequestedBy ? couple.disconnectRequestedBy.toString() : null;
+
+    // Optional reject action for partner-facing "Reject Request" button
+    if (action === 'reject' && requesterId && requesterId !== userId) {
+      couple.disconnectRequestedBy = null;
+      await couple.save();
+
+      return res.json({
+        msg: 'Disconnect request cancelled.',
+        disconnectRequestedBy: null
+      });
+    }
+
+    // Scenario A: Initiation
+    if (!requesterId) {
+      couple.disconnectRequestedBy = userId;
+      await couple.save();
+
+      return res.json({
+        msg: 'Disconnect request sent. Waiting for partner approval.',
+        disconnectRequestedBy: couple.disconnectRequestedBy
+      });
+    }
+
+    // Scenario B: Cancellation by initiator
+    if (requesterId === userId) {
+      couple.disconnectRequestedBy = null;
+      await couple.save();
+
+      return res.json({
+        msg: 'Disconnect request cancelled.',
+        disconnectRequestedBy: null
+      });
+    }
+
+    // Scenario C: Mutual approval by partner => permanent shred
+    const coupleId = couple._id;
+
+    await Promise.all([
+      User.updateMany(
+        { _id: { $in: [couple.user1Id, couple.user2Id].filter(Boolean) } },
+        { $set: { coupleId: null } }
+      ),
+      Message.deleteMany({ coupleId }),
+      CanvasState.deleteMany({ coupleId }),
+      Memory.deleteMany({ coupleId }),
+      DiaryEntry.deleteMany({ coupleId }),
+      CinemaState.deleteMany({ coupleId }),
+      BucketListItem.deleteMany({ coupleId })
+    ]);
+
+    await Couple.findByIdAndDelete(coupleId);
+
+    return res.json({
+      msg: 'Room permanently shredded.',
+      shredded: true
+    });
+  } catch (error) {
+    console.error('🔥 Disconnect request error:', error.message);
+    return res.status(500).json({
+      msg: 'Error processing disconnect request',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }

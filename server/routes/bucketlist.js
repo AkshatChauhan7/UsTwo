@@ -143,44 +143,4 @@ router.delete('/:id', authMiddleware, async (req, res) => {
   }
 });
 
-router.put('/:id/toggle', authMiddleware, async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const item = await BucketListItem.findById(id);
-    if (!item) {
-      return res.status(404).json({ msg: 'Bucket list item not found', code: 'ITEM_NOT_FOUND' });
-    }
-
-    const access = await ensureUserInCouple(req.user.id, item.coupleId.toString());
-    if (!access.ok) {
-      return res.status(access.status).json({ msg: access.msg, code: access.code });
-    }
-
-    const existingIndex = item.checks.findIndex((userId) => userId?.toString() === req.user.id.toString());
-    if (existingIndex >= 0) {
-      item.checks.splice(existingIndex, 1);
-    } else {
-      item.checks.push(req.user.id);
-    }
-
-    item.status = BucketListItem.deriveStatus(item.checks);
-    item.updatedAt = new Date();
-    await item.save();
-
-    const io = req.app.get('io');
-    if (io) {
-      io.to(`couple-${item.coupleId}`).emit('bucket-item-updated', item.toObject());
-    }
-
-    return res.json({ msg: 'Bucket list item updated', item });
-  } catch (error) {
-    console.error('🔥 Toggle bucket item error:', error.message);
-    return res.status(500).json({
-      msg: 'Error updating bucket list item',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
-    });
-  }
-});
-
 module.exports = router;
