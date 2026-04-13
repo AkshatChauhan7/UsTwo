@@ -1,30 +1,12 @@
 import Avatar from "./Avatar";
 
-export default function ChatHeader({ contact, onToggleSidebar, showMenuButton = false, isSidebarOpen = false }) {
+export default function ChatHeader({ contact }) {
   if (!contact) return null;
 
   return (
-    <header className="flex items-center justify-between px-3 sm:px-5 md:px-8 py-3 sm:py-4 bg-white border-b border-rose-100 flex-shrink-0">
+    <header className="flex items-center justify-between px-8 py-4 bg-white border-b border-rose-100 flex-shrink-0">
       {/* Left: avatar + name */}
       <div className="flex items-center gap-4">
-        {showMenuButton ? (
-          <button
-            type="button"
-            onClick={onToggleSidebar}
-            className="md:hidden min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center hover:bg-rose-50 transition-colors"
-            aria-label={isSidebarOpen ? 'Back' : 'Menu'}
-          >
-            {isSidebarOpen ? (
-              <svg className="w-5 h-5 stroke-stone-500 fill-none stroke-2" viewBox="0 0 24 24">
-                <path d="M15 18l-6-6 6-6" />
-              </svg>
-            ) : (
-              <svg className="w-5 h-5 stroke-stone-500 fill-none stroke-2" viewBox="0 0 24 24">
-                <path d="M3 6h18M3 12h18M3 18h18" />
-              </svg>
-            )}
-          </button>
-        ) : null}
         <Avatar initials={contact.initials} online={contact.online} />
         <div>
           <p className="text-base font-semibold text-stone-800">{contact.name}</p>
@@ -35,7 +17,7 @@ export default function ChatHeader({ contact, onToggleSidebar, showMenuButton = 
       </div>
 
       {/* Right: actions */}
-      <div className="hidden sm:flex items-center gap-1">
+      <div className="flex items-center gap-1">
         {/* Search in chat */}
         <button className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-rose-50 transition-colors" title="Search">
           <svg className="w-[18px] h-[18px] stroke-stone-400 fill-none stroke-2" viewBox="0 0 24 24">

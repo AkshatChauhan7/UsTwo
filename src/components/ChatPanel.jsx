@@ -21,32 +21,18 @@ function EmptyState() {
   );
 }
 
-export default function ChatPanel({
-  contact,
-  messages,
-  typing,
-  input,
-  setInput,
-  onSend,
-  onToggleSidebar,
-  isSidebarOpen = false
-}) {
+export default function ChatPanel({ contact, messages, typing, input, setInput, onSend }) {
   if (!contact) {
     return (
-      <main className="flex flex-col flex-1 h-full w-full min-h-dvh overflow-hidden bg-rose-50">
+      <main className="flex flex-col flex-1 h-full overflow-hidden bg-rose-50">
         <EmptyState />
       </main>
     );
   }
 
   return (
-    <main className="flex flex-col flex-1 h-full w-full min-h-dvh overflow-hidden bg-rose-50">
-      <ChatHeader
-        contact={contact}
-        onToggleSidebar={onToggleSidebar}
-        showMenuButton={true}
-        isSidebarOpen={isSidebarOpen}
-      />
+    <main className="flex flex-col flex-1 h-full overflow-hidden bg-rose-50">
+      <ChatHeader contact={contact} />
       <MessageList messages={messages} contact={contact} typing={typing} />
       <InputBar input={input} setInput={setInput} onSend={onSend} />
     </main>

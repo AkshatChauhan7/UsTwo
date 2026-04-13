@@ -64,15 +64,6 @@ const apiCall = {
   sendMessage: (coupleId, content, clientTempId) =>
     API.post('/chat/send', { coupleId, content, clientTempId }),
 
-  sendMediaMessage: (coupleId, file, type, content = '') => {
-    const formData = new FormData();
-    formData.append('coupleId', coupleId);
-    formData.append('media', file);
-    formData.append('type', type);
-    if (content) formData.append('content', content);
-    return API.post('/chat/send-media', formData);
-  },
-
   markRead: (coupleId) =>
     API.put(`/chat/mark-read/${coupleId}`),
 
@@ -126,6 +117,9 @@ const apiCall = {
 
   createBucketListItem: (payload) =>
     API.post('/bucketlist', payload),
+
+  toggleBucketListItem: (itemId) =>
+    API.put(`/bucketlist/${itemId}/toggle`),
 
   deleteBucketListItem: (itemId) =>
     API.delete(`/bucketlist/${itemId}`)
