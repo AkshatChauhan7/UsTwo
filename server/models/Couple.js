@@ -54,6 +54,11 @@ const CoupleSchema = new mongoose.Schema({
   cinemaUpdatedAt: {
     type: Date,
     default: null
+  },
+  disconnectRequestedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null
   }
 });
 

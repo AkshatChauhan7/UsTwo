@@ -57,6 +57,12 @@ const apiCall = {
   disconnectCouple: () =>
     API.delete('/couples/disconnect'),
 
+  requestDisconnect: () =>
+    API.post('/couples/disconnect-request'),
+
+  rejectDisconnectRequest: () =>
+    API.post('/couples/disconnect-request', { action: 'reject' }),
+
   // Chat
   getChatHistory: (coupleId, limit = 50, skip = 0) =>
     API.get(`/chat/history/${coupleId}`, { params: { limit, skip } }),

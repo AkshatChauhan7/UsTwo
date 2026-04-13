@@ -228,6 +228,16 @@ const WatchPartyCall = ({
       callerId: myUserId,
       signalData
     });
+
+    // Backward compatibility for older server relay handlers.
+    socket.emit('CINEMA_SIGNAL', {
+      coupleId,
+      signal: {
+        targetUserId: partnerUserId || null,
+        callerId: myUserId,
+        signalData
+      }
+    });
   };
 
   const ensureLocalMedia = async () => {
@@ -412,7 +422,8 @@ const WatchPartyCall = ({
       try {
         if (!payload || payload.coupleId?.toString() !== String(coupleId)) return;
 
-        const { callerId, targetUserId, signalData } = payload;
+        const normalized = payload.signal ? { ...payload.signal, coupleId: payload.coupleId } : payload;
+        const { callerId, targetUserId, signalData } = normalized;
         if (!signalData || callerId?.toString() === myUserId?.toString()) return;
         if (targetUserId && targetUserId.toString() !== myUserId?.toString()) return;
 

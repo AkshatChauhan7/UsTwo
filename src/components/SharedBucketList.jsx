@@ -96,17 +96,10 @@ const SharedBucketList = ({ coupleId, mood = 'cozy', partnerName = 'your partner
 
     setIsSubmitting(true);
     try {
-      const response = await api.createBucketListItem({
+      await api.createBucketListItem({
         title: form.title.trim(),
         description: form.description.trim()
       });
-
-      if (response?.data?.item?._id) {
-        setItems((prev) => {
-          if (prev.some((item) => item._id === response.data.item._id)) return prev;
-          return [response.data.item, ...prev];
-        });
-      }
 
       setForm({ title: '', description: '' });
     } catch (error) {
@@ -119,63 +112,36 @@ const SharedBucketList = ({ coupleId, mood = 'cozy', partnerName = 'your partner
   const handleDelete = async (itemId) => {
     try {
       await api.deleteBucketListItem(itemId);
-      setItems((prev) => prev.filter((item) => item._id !== itemId));
     } catch (error) {
       console.error('Failed to delete bucket item:', error);
     }
   };
 
-  const handleToggle = async (itemId) => {
-    if (!itemId || !user?.id) return;
-
-    setItems((prev) => prev.map((item) => {
-      if (item._id !== itemId) return item;
-      const currentChecks = Array.from(new Set((item.checks || []).map((id) => id?.toString())));
-      const hasChecked = currentChecks.some((id) => id === user.id?.toString());
-      const nextChecks = hasChecked
-        ? currentChecks.filter((id) => id !== user.id?.toString())
-        : [...currentChecks, user.id?.toString()];
-      const checksCount = nextChecks.length;
-      const nextStatus = checksCount <= 0 ? 'pending' : checksCount === 1 ? 'half-done' : 'completed';
-      return { ...item, checks: nextChecks, status: nextStatus };
-    }));
-
-    try {
-      const response = await api.toggleBucketListItem(itemId);
-      if (response?.data?.item?._id) {
-        setItems((prev) => prev.map((item) => (item._id === response.data.item._id ? response.data.item : item)));
-      }
-    } catch (error) {
-      console.error('Failed to toggle bucket item:', error);
-    }
-  };
-
-  const getUniqueChecks = (item) => Array.from(new Set((item?.checks || []).map((id) => id?.toString())));
-
-  const deriveDisplayStatus = (item) => {
-    const checksCount = getUniqueChecks(item).length;
-    if (checksCount <= 0) return 'pending';
-    if (checksCount === 1) return 'half-done';
-    return 'completed';
+  const handleToggle = (itemId) => {
+    if (!socket || !itemId) return;
+    socket.emit('toggle-bucket-item', {
+      coupleId,
+      itemId,
+      userId: user?.id
+    });
   };
 
   const getCompletionLabel = (item) => {
-    const displayStatus = deriveDisplayStatus(item);
-    if (displayStatus === 'completed') return 'Approved together ✨';
+    const checksCount = item?.checks?.length || 0;
+    const isCheckedByMe = (item?.checks || []).some((id) => id?.toString() === user?.id?.toString());
 
-    const uniqueChecks = getUniqueChecks(item);
-    const isCheckedByMe = uniqueChecks.some((id) => id === user?.id?.toString());
-
-    if (displayStatus === 'pending') return 'Pending';
-    return isCheckedByMe ? `Waiting for ${partnerName}...` : 'Your turn to approve ✍️';
+    if (checksCount === 0) return 'Pending';
+    if (checksCount === 1) {
+      return isCheckedByMe ? `Waiting for ${partnerName}...` : 'Your turn to approve ✍️';
+    }
+    return 'Completed together ✨';
   };
 
   const getItemClasses = (item) => {
-    const displayStatus = deriveDisplayStatus(item);
-    if (displayStatus === 'completed') {
+    if (item.status === 'completed') {
       return 'bg-linear-to-r from-emerald-100/80 to-teal-100/70 border-emerald-300/70';
     }
-    if (displayStatus === 'half-done') {
+    if (item.status === 'half-done') {
       return 'bg-amber-50/80 border-amber-200/70';
     }
     return 'bg-white/70 border-pink-100';
@@ -241,8 +207,7 @@ const SharedBucketList = ({ coupleId, mood = 'cozy', partnerName = 'your partner
       ) : (
         <ul className="space-y-3 pb-2">
           {items.map((item) => {
-            const displayStatus = deriveDisplayStatus(item);
-            const isCheckedByMe = getUniqueChecks(item).some((id) => id === user?.id?.toString());
+            const isCheckedByMe = (item?.checks || []).some((id) => id?.toString() === user?.id?.toString());
 
             return (
               <li
@@ -251,15 +216,15 @@ const SharedBucketList = ({ coupleId, mood = 'cozy', partnerName = 'your partner
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <h4 className={`font-bold ${displayStatus === 'completed' ? 'line-through text-emerald-700' : isNight ? 'text-white' : 'text-gray-800'}`}>
+                    <h4 className={`font-bold ${item.status === 'completed' ? 'line-through text-emerald-700' : isNight ? 'text-white' : 'text-gray-800'}`}>
                       {item.title}
                     </h4>
                     {item.description ? (
-                      <p className={`text-sm mt-1 ${displayStatus === 'completed' ? 'line-through text-emerald-700/90' : isNight ? 'text-purple-100' : 'text-gray-600'}`}>
+                      <p className={`text-sm mt-1 ${item.status === 'completed' ? 'line-through text-emerald-700/90' : isNight ? 'text-purple-100' : 'text-gray-600'}`}>
                         {item.description}
                       </p>
                     ) : null}
-                    <p className={`text-xs mt-2 font-semibold ${displayStatus === 'completed' ? 'text-emerald-700' : displayStatus === 'half-done' ? 'text-amber-700' : 'text-gray-500'}`}>
+                    <p className={`text-xs mt-2 font-semibold ${item.status === 'completed' ? 'text-emerald-700' : item.status === 'half-done' ? 'text-amber-700' : 'text-gray-500'}`}>
                       {getCompletionLabel(item)}
                     </p>
                   </div>

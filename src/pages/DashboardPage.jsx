@@ -33,6 +33,7 @@ const DashboardPage = () => {
   const [hasDiaryAlert, setHasDiaryAlert] = useState(false);
   const [hasCinemaInvite, setHasCinemaInvite] = useState(false);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+  const [disconnectLoading, setDisconnectLoading] = useState(false);
   const previousMoodRef = useRef('cozy');
 
   const handleTabChange = (nextTab) => {
@@ -138,6 +139,48 @@ const DashboardPage = () => {
     api.getCoupleInfo(coupleId).then(res => setCoupleData(res.data.couple));
   };
 
+  const handleDisconnectRequest = async ({ reject = false } = {}) => {
+    if (disconnectLoading) return;
+
+    const disconnectRequesterId = coupleData?.disconnectRequestedBy?.toString?.() || coupleData?.disconnectRequestedBy || null;
+
+    if (!reject && !disconnectRequesterId) {
+      const confirmed = window.confirm(
+        'This will send a disconnect request. If your partner approves, your shared room and all room data will be permanently shredded. Continue?'
+      );
+      if (!confirmed) return;
+    }
+
+    setDisconnectLoading(true);
+
+    try {
+      const response = reject
+        ? await api.rejectDisconnectRequest()
+        : await api.requestDisconnect();
+
+      if (response?.data?.shredded) {
+        setCoupleData(null);
+      } else {
+        setCoupleData((prev) => (
+          prev
+            ? {
+                ...prev,
+                disconnectRequestedBy: response?.data?.disconnectRequestedBy ?? null
+              }
+            : prev
+        ));
+      }
+
+      if (response?.data?.msg) {
+        window.alert(response.data.msg);
+      }
+    } catch (error) {
+      window.alert(error?.response?.data?.msg || 'Unable to process disconnect request.');
+    } finally {
+      setDisconnectLoading(false);
+    }
+  };
+
   // If no couple is connected yet, show the invite modal
   if (isLoadingCouple) {
     return (
@@ -162,6 +205,9 @@ const DashboardPage = () => {
   // Get partner name and info
   const partnerData =
     coupleData.user1._id === user?.id ? coupleData.user2 : coupleData.user1;
+  const partnerId = partnerData?._id?.toString();
+  const currentUserId = user?.id?.toString();
+  const disconnectRequestedBy = coupleData?.disconnectRequestedBy?.toString?.() || coupleData?.disconnectRequestedBy || null;
   const partnerName = partnerData?.name || 'Partner';
   const partnerInitials = partnerData?.initials || partnerName.slice(0, 2).toUpperCase();
   const moodLabelMap = {
@@ -197,7 +243,7 @@ const DashboardPage = () => {
               <p className="text-xs text-gray-500 truncate">{moodLabelMap[mood]} · With {partnerName}</p>
             </div>
           </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap justify-end">
             <select
               value={mood}
               onChange={(e) => setMood(e.target.value)}
@@ -216,6 +262,49 @@ const DashboardPage = () => {
             >
               Logout
             </button>
+
+            {disconnectRequestedBy === null ? (
+              <button
+                onClick={() => handleDisconnectRequest()}
+                disabled={disconnectLoading}
+                className="px-3 py-1.5 rounded-lg text-sm font-semibold border border-rose-300 text-rose-700 bg-white hover:bg-rose-50 disabled:opacity-60"
+              >
+                {disconnectLoading ? 'Please wait...' : 'Request Disconnect'}
+              </button>
+            ) : disconnectRequestedBy === currentUserId ? (
+              <>
+                <button
+                  disabled
+                  className="px-3 py-1.5 rounded-lg text-sm font-semibold border border-amber-300 text-amber-700 bg-amber-50 opacity-90 cursor-not-allowed"
+                >
+                  Waiting for Partner to Approve...
+                </button>
+                <button
+                  onClick={() => handleDisconnectRequest()}
+                  disabled={disconnectLoading}
+                  className="px-3 py-1.5 rounded-lg text-sm font-semibold border border-stone-300 text-stone-700 bg-white hover:bg-stone-50 disabled:opacity-60"
+                >
+                  {disconnectLoading ? 'Please wait...' : 'Cancel Request'}
+                </button>
+              </>
+            ) : disconnectRequestedBy === partnerId ? (
+              <>
+                <button
+                  onClick={() => handleDisconnectRequest()}
+                  disabled={disconnectLoading}
+                  className="px-3 py-1.5 rounded-lg text-sm font-bold text-white bg-red-600 hover:bg-red-700 disabled:opacity-60"
+                >
+                  {disconnectLoading ? 'Please wait...' : 'Approve Disconnect (PERMANENT SHRED)'}
+                </button>
+                <button
+                  onClick={() => handleDisconnectRequest({ reject: true })}
+                  disabled={disconnectLoading}
+                  className="px-3 py-1.5 rounded-lg text-sm font-semibold border border-stone-300 text-stone-700 bg-white hover:bg-stone-50 disabled:opacity-60"
+                >
+                  Reject Request
+                </button>
+              </>
+            ) : null}
           </div>
         </div>
 
